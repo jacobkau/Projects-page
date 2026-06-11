@@ -11,16 +11,8 @@ if (isset($_GET['delete_vote']) && is_numeric($_GET['delete_vote'])) {
     $vote_id = intval($_GET['delete_vote']);
     try {
         $stmt = $conn->prepare("DELETE FROM votes WHERE id = ?");
-        if (!$stmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-        $stmt->bind_param("i", $vote_id);
-        if ($stmt->execute()) {
-            echo "<p style='color:green;'>Vote deleted successfully.</p>";
-        } else {
-            throw new Exception("Execute failed: " . $stmt->error);
-        }
-        $stmt->close();
+        $stmt->execute([$vote_id]);
+        echo "<p style='color:green;'>Vote deleted successfully.</p>";
     } catch (Exception $e) {
         error_log("Error deleting vote: " . $e->getMessage());
         echo "<p style='color:red;'>Error deleting vote: " . htmlspecialchars($e->getMessage()) . "</p>";
@@ -30,13 +22,8 @@ if (isset($_GET['delete_vote']) && is_numeric($_GET['delete_vote'])) {
 // Fetch Elections
 try {
     $stmt = $conn->prepare("SELECT id, title FROM elections");
-    if (!$stmt) {
-        throw new Exception("Prepare failed: " . $conn->error);
-    }
     $stmt->execute();
-    $electionsResult = $stmt->get_result();
-    $elections = $electionsResult->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+    $elections = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Error fetching elections: " . $e->getMessage());
     $elections = [];
@@ -47,15 +34,8 @@ try {
 function getVoteCounts($conn, $electionId, $postName) {
     try {
         $stmt = $conn->prepare("SELECT candidate_name, COUNT(*) AS vote_count FROM votes WHERE election_id = ? AND postname = ? GROUP BY candidate_name");
-        if (!$stmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-        $stmt->bind_param("is", $electionId, $postName);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $counts = $result->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        return $counts;
+        $stmt->execute([$electionId, $postName]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         error_log("Error fetching vote counts: " . $e->getMessage());
         return [];
@@ -66,15 +46,8 @@ function getVoteCounts($conn, $electionId, $postName) {
 function getElectionPosts($conn, $electionId) {
     try {
         $stmt = $conn->prepare("SELECT postname FROM election_posts WHERE election_id = ?");
-        if (!$stmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-        $stmt->bind_param("i", $electionId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $posts = $result->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-        return $posts;
+        $stmt->execute([$electionId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         error_log("Error fetching election posts: " . $e->getMessage());
         return [];
@@ -88,7 +61,6 @@ function getElectionPosts($conn, $electionId) {
     <meta charset="UTF-8">
     <title>Manage Votes</title>
     <style>
-        /* Your existing styles */
         table {
             width: 90%;
             max-width: 1200px;
@@ -149,7 +121,7 @@ function getElectionPosts($conn, $electionId) {
             $posts = getElectionPosts($conn, $electionId);
             if (!empty($posts)):
             ?>
-            <table>
+             <table>
                 <thead>
                     <tr>
                         <th>Post</th>
@@ -180,4 +152,7 @@ function getElectionPosts($conn, $electionId) {
 </body>
 </html>
 
-<?php $conn->close(); ?>
+<?php 
+// Close PDO connection by setting to null
+$conn = null;
+?>
