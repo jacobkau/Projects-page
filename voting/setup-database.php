@@ -5,14 +5,14 @@ include 'conn.php'; // Pulls your working Aiven connection
 try {
     // We combine all your SQL commands into one big string blocks
     $sqlCommands = "
- CREATE TABLE IF NOT EXISTS admin (
+CREATE TABLE IF NOT EXISTS elections (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    name VARCHAR(50),
-    email VARCHAR(50),
-    photo VARCHAR(150),
-    created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    start_date DATETIME,
+    end_date DATETIME,
+    status ENUM('upcoming', 'active', 'completed') DEFAULT 'upcoming',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
     ";
