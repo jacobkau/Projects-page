@@ -1,38 +1,38 @@
 <?php
-// conn.php - Robust database connection
+// conn.php - Completely hidden credentials
 
-// 1. Check if Render has the background variable. If not, use your raw link directly.
+// 1. Fetch the secret link from Render's hidden environment variables
 $uri = getenv('AIVEN_DATABASE_URL');
 
+// If the background variable is missing, stop the script safely
 if (!$uri) {
-    // Paste your exact raw string here as a backup
-    $uri = "mysql://avnadmin:<redacted>@mysql-207a0fc7-jw-all-projects-databases.c.aivencloud.com:27643/defaultdb?ssl-mode=REQUIRED";
+    die("Database Connection Error: Secure configuration string is missing.");
 }
 
-// 2. Safely break down the URL link
+// 2. Break down the hidden URL link
 $fields = parse_url($uri);
 
 if (!$fields || !isset($fields["host"])) {
-    die("Database Connection Error: The connection link string is broken or invalid.");
+    die("Database Connection Error: Secure configuration string is corrupted.");
 }
 
-// 3. Build the connection string using your ca.pem file
+// 3. Build the connection string using the absolute path to your certificate
 $conn = "mysql:";
 $conn .= "host=" . $fields["host"];
-$conn .= ";port=" . ($fields["port"] ?? '27643'); // Uses 27643 if port is missing
+$conn .= ";port=" . ($fields["port"] ?? '27643');
 $conn .= ";dbname=defaultdb";
-$conn .= ";sslmode=verify-ca;sslrootcert=/var/www/html/ca.pem"; 
-// Note: We used an absolute path above so your subfolders like /voting/ can find ca.pem!
+$conn .= ";sslmode=verify-ca;sslrootcert=/var/www/html/ca.pem";
 
 try {
-    // 4. Connect to Aiven MySQL
     $user = $fields["user"] ?? 'avnadmin';
     $pass = $fields["pass"] ?? '';
     
+    // 4. Connect securely
     $db = new PDO($conn, $user, $pass);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 } catch (Exception $e) {
-    die("Database Connection Error: " . $e->getMessage());
+    // We hide the raw error message so it never prints your password on screen
+    die("Database Connection Error: Could not connect to database securely.");
 }
 ?>
