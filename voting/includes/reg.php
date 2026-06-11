@@ -1,13 +1,18 @@
 <?php
 include("conn.php");
 
+// Map $conn to $db if your conn.php file sets up the connection variable as $db
+if (!isset($conn) && isset($db)) {
+    $conn = $db;
+}
+
 $error = "";
 $success = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = $_POST["username"];
-    $name = $_POST["name"];
-    $email = $_POST["email"];
+    $username = trim($_POST["username"]);
+    $name = trim($_POST["name"]);
+    $email = trim($_POST["email"]);
     $password = $_POST["password"];
     $confirm_password = $_POST["confirm_password"];
 
@@ -19,28 +24,43 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
     } else {
-        // Check if username or email already exists
-        $check_query = "SELECT * FROM admin WHERE username = '$username' OR email = '$email'";
-        $check_result = $conn->query($check_query);
+        try {
+            // 1. Check if username or email already exists in the 'users' table
+            $check_query = "SELECT COUNT(*) FROM users WHERE username = :username OR email = :email";
+            $stmt = $conn->prepare($check_query);
+            $stmt->execute([
+                ':username' => $username,
+                ':email' => $email
+            ]);
+            $count = $stmt->fetchColumn();
 
-        if ($check_result->num_rows > 0) {
-            $error = "Username or email already exists.";
-        } else {
-            // Hash the password
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-            // Insert user into the database
-            $insert_query = "INSERT INTO admin (username, name, email, password) VALUES ('$username', '$name', '$email', '$hashed_password')";
-
-            if ($conn->query($insert_query) === TRUE) {
-                $success = "Registration successful! You can now login.";
+            if ($count > 0) {
+                $error = "Username or email already exists.";
             } else {
-                $error = "Error: " . $insert_query . "<br>" . $conn->error;
+                // 2. Hash the password securely
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
+                // 3. Insert user into the correct 'users' table using safe Prepared Statements
+                $insert_query = "INSERT INTO admin (username, name, email, password) VALUES (:username, :name, :email, :password)";
+                $insert_stmt = $conn->prepare($insert_query);
+                
+                $insert_stmt->execute([
+                    ':username' => $username,
+                    ':name' => $name,
+                    ':email' => $email,
+                    ':password' => $hashed_password
+                ]);
+
+                $success = "Registration successful! You can now login.";
             }
+        } catch (PDOException $e) {
+            // Catch error messages cleanly the PDO way without breaking the screen
+            $error = "Database Error: " . $e->getMessage();
         }
     }
 }
 ?>
+
 
 
 <!DOCTYPE html>
