@@ -2,6 +2,11 @@
 session_start();
 include("conn.php");
 
+// Map $conn to $db if your conn.php file sets up the variable as $db
+if (!isset($conn) && isset($db)) {
+    $conn = $db;
+}
+
 // Redirect if already logged in
 if (isset($_SESSION['admin_id'])) {
     header("Location: main.php");
@@ -18,35 +23,46 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error = "Username and password are required.";
     } else {
         try {
-            $stmt = $conn->prepare("SELECT id, username, password FROM admin WHERE username = ?");
-            if (!$stmt) {
-                throw new Exception("Database prepare error: " . $conn->error);
-            }
-            $stmt->bind_param("s", $username);
+            // 1. Prepare query using the PDO format (targeting 'users' table)
+            $stmt = $conn->prepare("SELECT id, username, password FROM users WHERE username = :username");
+            
+            // 2. Execute query by passing the value inside an array
+            $stmt->execute([':username' => $username]);
+            
+            // 3. Fetch the row entry cleanly
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (!$stmt->execute()) {
-                throw new Exception("Database execute error: " . $stmt->error);
-            }
-
-            $result = $stmt->get_result();
-
-            if ($result->num_rows > 0) {
-                $row = $result->fetch_assoc();
+            if ($row) {
                 $admin_id = $row["id"];
                 $db_username = $row["username"];
                 $db_password = $row["password"];
 
-                if (password_verify($password, $db_password)) {  // Ensure passwords are hashed in DB
+                // 4. Verify the secure hashed password
+                if (password_verify($password, $db_password)) {
                     $_SESSION['admin_id'] = $admin_id;
                     $_SESSION['username'] = $db_username;
 
-                    // Log event
-                    $eventStmt = $conn->prepare("INSERT INTO event_log (username, event_type, event_description) VALUES (?, ?, ?)");
-                    $eventType = "Admin Login";
-                    $eventDesc = "Admin logged in successfully.";
-                    $eventStmt->bind_param("sss", $db_username, $eventType, $eventDesc);
-                    $eventStmt->execute();
-                    $eventStmt->close();
+                    try {
+                        // 5. Log login event using secure PDO parameters (Create table if missing)
+                        $conn->exec("CREATE TABLE IF NOT EXISTS event_log (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            username VARCHAR(50),
+                            event_type VARCHAR(50),
+                            event_description VARCHAR(255),
+                            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );");
+
+                        $eventQuery = "INSERT INTO event_log (username, event_type, event_description) VALUES (:user, :type, :desc)";
+                        $eventStmt = $conn->prepare($eventQuery);
+                        $eventStmt->execute([
+                            ':user' => $db_username,
+                            ':type' => "Admin Login",
+                            ':desc' => "Admin logged in successfully."
+                        ]);
+                    } catch (Exception $logError) {
+                        // If logging fails, we don't block the user from accessing the main dashboard
+                        error_log("Event Log Error: " . $logError->getMessage());
+                    }
 
                     header("Location: main.php");
                     exit();
@@ -56,7 +72,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } else {
                 $error = "Invalid username.";
             }
-            $stmt->close();
         } catch (Exception $dbException) {
             error_log("Login Database Error: " . $dbException->getMessage());
             $error = "An error occurred during login. Please try again.";
