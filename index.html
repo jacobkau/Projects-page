@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jacob Witty | Projects</title>
+    <meta name="description" content="A portfolio showcasing my projects and skills.">
+    <meta name="keywords" content="portfolio, projects, web development, design">
+    <meta name="author" content="Jacob Witty">
+    <link rel="icon" href="face.png" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+</head>
+
+<body>
+
+	 <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background: linear-gradient(135deg, #e0f2fe, #f0f8ff);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        body.dark-theme {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #f0f0f0;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+
+        .left-column,
+        .right-column {
+            width: 48%;
+            min-width: 300px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .dark-theme .left-column,
+        .dark-theme .right-column {
+            background-color: #2d3748;
+            color: #f0f0f0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .project-link {
+            display: block;
+            background-color: #343a40;
+            color: white;
+            padding: 15px 25px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            transition: background-color 0.3s ease;
+        }
+
+        .project-link:hover {
+            background-color: #23272b;
+        }
+
+        .dark-theme .project-link {
+            background-color: #4a5568;
+        }
+
+        .dark-theme .project-link:hover {
+            background-color: #2d3748;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f8ff;
+            border-top: 1px solid #e0f2fe;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+
+        .dark-theme footer {
+            background-color: #1a202c;
+            border-top: 1px solid #2d3748;
+            color: #f0f0f0;
+        }
+
+        @media (max-width: 768px) {
+
+            .left-column,
+            .right-column {
+                width: 100%;
+            }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            border-radius: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-content {
+            background-color: #f5f5f5;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 50%;
+            border-radius: 8px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .dark-theme .modal-content {
+            background-color: #2d3748;
+            color: #f0f0f0;
+            border-color: #4a5568;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            transition: color 0.3s ease;
+        }
+
+        .dark-theme .close {
+            color: #cbd5e0;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .dark-theme .close:hover,
+        .dark-theme .close:focus {
+            color: white;
+        }
+
+        .read-more-btn {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        .read-more-btn:hover {
+            background-color: #2980b9;
+        }
+
+        .dark-theme .read-more-btn {
+            background-color: #4299e1;
+        }
+
+        .dark-theme .read-more-btn:hover {
+            background-color: #3182ce;
+        }
+
+        .privacy-link {
+            color: blue;
+            text-decoration: underline;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .dark-theme .privacy-link {
+            color: #63b3ed;
+        }
+
+        .header-profile-image {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 10px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        header h1,
+        header p {
+            text-align: center;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 4vh;
+            right: 29%;
+            background-color: #343a40;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .dark-theme .theme-toggle {
+            background-color: #4a5568;
+        }
+
+        a {
+            color: #3498db;
+            transition: color 0.3s ease;
+        }
+
+        a i {
+            margin-right: 10px;
+        }
+
+        .dark-theme a {
+            color: #63b3ed;
+        }
+
+        .dark-theme a:hover {
+            color: #90cdf4;
+        }
+
+        .mini-contact-form {
+            margin-top: 15px;
+        }
+
+        .mini-contact-form input,
+        .mini-contact-form textarea {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .mini-contact-form button {
+            background: #007BFF;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .mini-contact-form button:hover {
+            background: #0056b3;
+        }
+    </style>
+
+    <button class="theme-toggle" id="themeToggle">
+        <i class="fas fa-moon"></i>
+    </button>
+<div class="container-fluid rounded shadow mt-2 mb-1 p-3" style="max-width: 1300px;">
+
+    <header>
+		  <img src="face.png" alt="Jacob Witty" class="header-profile-image">
+        <h1 class="">
+            <b>Jacob Witty</b><br>
+            <b>A portfolio showcasing skills and projects.</b>
+        </h1>
+	  
+    </header>
+	
+    <main>
+		
+        <div class="container">
+            <div class="left-column">
+                <h2>Software Development Projects</h2>
+                <a href="voting/index.php" target="_blank" class="project-link">
+                    <i class="fas fa-vote-yea"></i>
+                    Online Voting Management System
+                </a>
+                <a href="https://wittyhandupsystem.vercel.app/" target="_blank" class="project-link">
+                    <i class="fa-brands fa-hire-a-helper"></i>
+                    Witty HandUp System
+                </a>
+                <a href="https://wittyhighbrowtechnologies.kesug.com" target="_blank" class="project-link">
+                    <i class="fas fa-home"></i>
+                    Witty Highbrow Technologies
+                </a>
+                <a href="https://mood-tracker-git-main-jacobkaus-projects.vercel.app/" target="_blank"
+                    class="project-link">
+                    <i class="fa-solid fa-face-smile"></i>
+                    Witty MoodTracker
+                </a>
+
+                <a href="https://paydebttechsystems.co.ke/paydebt-system/" target="_blank" class="project-link">
+                    <i class="fas fa-hand-holding-usd"></i>
+                    MicroFinance Management System
+                </a>
+                <a href="https://zukbitsonline.co.ke" target="_blank" class="project-link">
+                    <i class="fas fa-university"></i>
+                    Zukbitsonline System
+                </a>
+                <a href="https://paydebttechsystems.co.ke/bits-catholic-portal/" target="_blank" class="project-link">
+                    <i class="fas fa-church"></i>
+                    Bits Catholic Portal
+                </a>
+
+            </div>
+            <div class="right-column">
+                <h2>About Jacob Witty</h2>
+                <p>Jacob Witty is a passionate web developer with a keen interest in creating efficient and
+                    user-friendly web applications. His skills span across front-end and back-end development, and he
+                    always eager to learn new technologies.</p>
+                <p>Feel free to explore his projects and don't hesitate to reach out for collaborations or inquiries.
+                </p>
+                <button class="read-more-btn" id="readMoreBtn">Read More</button>
+                <div id="infoModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <p>
+                            <strong>Jacob Witty – Founder & Developer at Witty Highbrow Technologies</strong>
+                        </p>
+                        <p>Jacob Witty is a passionate software developer and technology enthusiast dedicated to
+                            creating innovative digital solutions. As the founder of
+                            <strong>Witty Highbrow Technologies</strong>, he leads projects that integrate cutting-edge
+                            technology with practical applications, helping businesses and individuals thrive in the
+                            digital space.
+                        </p>
+                        <p>With expertise in
+                            <strong>web development, software design, and graphic design</strong>, Jacob specializes in
+                            building user-friendly and efficient systems. He is proficient in multiple programming
+                            languages, including
+                            <strong>JavaScript, PHP, HTML and CSS</strong>, and works with popular frameworks such as
+                            <strong>Bootstrap</strong>. His experience also extends to database management with
+                            <strong>MySQL</strong> and other backend technologies.
+                        </p>
+                        <p>Beyond his technical skills, Jacob is also a talented musician, bringing creativity and
+                            innovation to his problem-solving approach. Whether developing powerful web applications,
+                            streamlining IT solutions, or composing music, he remains committed to delivering excellence
+                            in every endeavor.</p>
+                    </div>
+                </div>
+                <h2>
+                    <br>Contact Information
+                </h2>
+                <p>Whatsapp: <a class="text-decoration-none fw-bold" target="_blank" href="https://wa.me/+254768374497">
+                        +254 768 374 497 </a></p>
+                <p>Email: <a href="mailto:kaujacob4@gmail.com" style="text-decoration:none;font-weight:bold"
+                        target="_blank"> kaujacob4@gmail.com </a></p>
+                <p>LinkedIn: <a href="https://www.linkedin.com/in/jacob-mwambwa-8b7296362/"
+                        style="text-decoration:none;font-weight:bold" target="_blank"> Jacob Mwambwa </a> </p>
+                <p>For more information, please read our
+                    <span class="privacy-link" style="text-decoration:none;font-weight:bold" id="privacyLink">Privacy Policy</span>.
+                </p>
+                <div id="privacyModal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h2>Privacy Policy</h2>
+                        <p>
+                            This is a demo environment.
+                            No personal data is collected or stored. Any data entered is temporary and will be deleted.
+                            We use HTTPS for secure connections.
+                            We do not share any information with third parties. This policy is subject to change without
+                            notice.
+                        </p>
+                        <p>We understand that exploring new online systems can sometimes raise concerns about security,
+                            and we want to assure you that your peace of mind is our priority. To give you a clear
+                            picture of how our system works, we've created a special demonstration area. Think of it as
+                            a virtual tour, where you can experience the key features without any risk to your personal
+                            information.</p>
+                        <p>Imagine walking into a model home; you can see the layout, the quality of the materials, and
+                            how the space functions, all without actually moving in. Similarly, our demo accounts allow
+                            you to navigate the system, see its user-friendly interface, and understand its
+                            capabilities, without needing to provide any of your own data.</p>
+                        <p>We've pre-loaded these demo accounts with sample information, and we've limited their access
+                            to ensure that no sensitive data can be reached or altered. It's like having a guided tour
+                            with a friendly assistant, showing you the highlights without letting you wander into
+                            private areas.</p>
+                        <p>We use secure connections, like a locked front door, to keep any information shared during
+                            your demo experience safe. And just like a museum changes its exhibits periodically, we
+                            regularly update our security measures and demo passwords to maintain a secure environment.
+                        </p>
+                        <p>If you'd rather watch a video walkthrough, or look at detailed screenshots, we have those
+                            options too. We want you to feel completely comfortable as you learn about our system. If
+                            you have any questions, please don't hesitate to reach out. We're here to help you
+                            understand and feel confident in what we offer.</p>
+                        <p>For any questions, please contact us at
+                            <a href="mailto:kaujacob4@gmail.com"
+                                style="text-decoration:none;font-weight:bold">kaujacob4@gmail.com.</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <header>
+        <h1>
+            <b>Social Media | Artistic World </b>
+        </h1>
+    </header>
+
+    <main>
+        <div class="container">
+            <div class="left-column">
+                <h2> Profiles Links </h2>
+                <a href="https://github.com/jacobkau" target="_blank" class="project-link">
+                    <i class="fab fa-github"></i>
+                    GitHub Profile
+                </a>
+                <a href="https://linktr.ee/jacob_witty" target="_blank" class="project-link">
+                    <i class="fas fa-share-alt"></i>
+                    Linktree Profile
+                </a>
+                <a href="https://youtube.com/@jacob_witty?si=ne756CXS_xFvACT_" target="_blank" class="project-link">
+                    <i class="fa-brands fa-youtube"></i>
+                    Youtube Profile
+                </a>
+                <a href="https://mdundo.com/a/456800" target="_blank" class="project-link">
+                    <i class="fa-solid fa-headphones"></i>
+                    Mdundo.com Profile
+                </a>
+                <a href="https://soundcloud.com/jacob-witty-136492268?utm_source=clipboard&utm_medium=text&utm_campaign=social_sharing"
+                    target="_blank" class="project-link">
+                    <i class="fa-brands fa-soundcloud"></i>
+                    SoundClound Profile
+                </a>
+                <a href="https://web.facebook.com/James.Mwambwa" target="_blank" class="project-link">
+                    <i class="fa-brands fa-facebook"></i>
+                    Facebook Profile
+                </a>
+                <a href="https://x.com/jacob_witty4" target="_blank" class="project-link">
+                    <i class="fa-brands fa-twitter"></i>
+                    Twitter Profile
+                </a>
+                <a href="https://www.tiktok.com/@jacob_witty?is_from_webapp=1&sender_device=pc" target="_blank"
+                    class="project-link">
+                    <i class="fa-brands fa-tiktok"></i>
+                    TikTok Profile
+                </a>
+                <a href="https://www.instagram.com/jacob__witty/" target="_blank" class="project-link">
+                    <i class="fa-brands fa-instagram"></i>
+                    Instagram Profile
+                </a>
+                <a href="https://www.snapchat.com/@jacob_witty4" target="_blank" class="project-link">
+                    <i class="fab fa-snapchat"></i>
+                    Snapchat Profile
+                </a>
+
+            </div>
+            <div class="right-column">
+                <h2>The Artistic World</h2>
+                <p>
+                    I am a devoted Catholic, choir trainer, and composer who believes that music is more than sound—it
+                    is prayer, healing, and a universal language of faith. My journey has been shaped by a desire to
+                    serve God and inspire others through both music and counselling. Over the years, I have walked
+                    closely with choirs, guiding them to discover not only harmony in their voices but also unity in
+                    spirit.
+                </p>
+                <p>
+                    My Catholic foundation continues to guide me, but my musical journey also extends into Protestant
+                    communities, where I play the keyboard and share in diverse styles of worship. This blend of
+                    experiences has deepened my appreciation of Christian unity, allowing me to bridge traditions while
+                    remaining firmly rooted in my faith. Many of my compositions—ranging from gospel to reggae—reflect
+                    this diversity and carry messages of hope, joy, and encouragement. These songs are already reaching
+                    listeners across digital platforms such as <strong>Mdundo</strong>, <strong>SoundCloud</strong>,
+                    <strong>TikTok</strong>, and <strong>YouTube</strong>, touching lives beyond the church walls.
+
+                </p>
+                <a class="btn btn-outline-primary" id="readMoreBtn2">Read More</a>
+
+
+                <!-- Small Contact Form -->
+                <h3>Contact Me</h3>
+                <div class="border shadow rounded" style="padding:10px">
+                    <form action="https://formspree.io/f/mnnzapdn" method="POST" class="mini-contact-form">
+                        <input type="text" name="name" placeholder="Your Name" required>
+                        <input type="email" name="_replyto" placeholder="Your Email" required>
+                        <textarea name="message" rows="3" placeholder="Your Message" required></textarea>
+                        <button class="btn btn-outline-primary" type="submit">Send</button>
+                    </form>
+                </div>
+                <div id="infoModal2" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <p>
+                            <strong>Choir Trainer • Catholic Composer • Counsellor</strong>
+                        </p>
+                        <p>
+                            As a <strong>choir trainer</strong>, I believe that a choir is not just a group of singers
+                            but a family united in worship. I take time to mentor voices, teach techniques, and instill
+                            confidence, while ensuring that every song is sung with prayerful devotion. My role goes
+                            beyond music sheets—I encourage choirs to experience the joy of serving God together, making
+                            every performance a form of worship.
+                        </p>
+                        <p>
+                            As a <strong>composer</strong>, my creative work flows from prayer and experience. I write
+                            songs that speak to real-life struggles, joys, and spiritual journeys, blending traditional
+                            Catholic hymns with contemporary styles such as gospel and reggae. Each composition is
+                            crafted not just for listening, but for healing and drawing people closer to God. I am
+                            humbled that my works have found audiences on platforms such as <strong>Mdundo</strong>,
+                            <strong>SoundCloud</strong>, <strong>TikTok</strong>, and <strong>YouTube</strong>, where
+                            they continue to inspire believers and seekers alike.
+                        </p>
+                        <p>
+                            My music ministry is complemented by my work as a <strong>counsellor and advisor</strong>. I
+                            walk with people during moments of pain, confusion, and stress, offering them encouragement
+                            rooted in faith, empathy, and hope. Many who come to me in need discover that music and
+                            counselling together provide comfort for the soul, helping them find peace in God’s
+                            presence.
+                        </p>
+                        <p>
+                            This mission—serving through <strong>music and counselling</strong>—is more than a
+                            profession; it is my calling. By combining art and faith, I strive to create spaces of hope,
+                            uplift hearts through song, and guide individuals toward healing and strength. My prayer is
+                            that every note I play, every choir I train, and every word of advice I share may reflect
+                            God’s love and inspire others to live with faith and courage.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+	</div>
+
+
+
+
+    <footer>
+        <p>&copy; 2025 Jacob Witty. All rights reserved.</p>
+    </footer>
+   
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('themeToggle');
+        const body = document.body;
+        const icon = themeToggle.querySelector('i');
+
+        // Check for saved theme preference or use preferred color scheme
+        const savedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+            body.classList.add('dark-theme');
+            icon.classList.replace('fa-moon', 'fa-sun');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-theme');
+            const isDark = body.classList.contains('dark-theme');
+
+            if (isDark) {
+                icon.classList.replace('fa-moon', 'fa-sun');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                icon.classList.replace('fa-sun', 'fa-moon');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+
+        // Get the modal for the "Read More" section
+        var infoModal = document.getElementById("infoModal");
+
+        // Get the button that opens the modal
+        var readMoreBtn = document.getElementById("readMoreBtn");
+
+        // Get the <span> element that closes the modal
+        var infoSpan = infoModal.getElementsByClassName("close")[0];
+
+        // When the user clicks the button, open the modal
+        readMoreBtn.onclick = function() {
+            infoModal.style.display = "block";
+        }
+
+        // When the user clicks on <span> (x), close the modal
+        infoSpan.onclick = function() {
+            infoModal.style.display = "none";
+        }
+
+        var infoModal2 = document.getElementById("infoModal2");
+        var readMoreBtn2 = document.getElementById("readMoreBtn2");
+        var infoSpan2 = infoModal2.getElementsByClassName("close")[0];
+
+        readMoreBtn2.onclick = function() {
+            infoModal2.style.display = "block";
+        }
+        infoSpan2.onclick = function() {
+            infoModal2.style.display = "none";
+        }
+
+        // When the user clicks anywhere outside of the modal, close it
+        window.onclick = function(event) {
+            if (event.target == infoModal) {
+                infoModal.style.display = "none";
+            }
+            if (event.target == infoModal2) {
+                infoModal2.style.display = "none";
+            }
+            if (event.target == privacyModal) {
+                privacyModal.style.display = "none";
+            }
+        }
+
+        // Get the privacy modal
+        var privacyModal = document.getElementById("privacyModal");
+
+        // Get the link that opens the modal
+        var privacyLink = document.getElementById("privacyLink");
+
+        // Get the <span> element that closes the modal
+        var privacySpan = privacyModal.getElementsByClassName("close")[0];
+
+        // When the user clicks the link, open the modal
+        if (privacyLink) {
+            privacyLink.onclick = function() {
+                privacyModal.style.display = "block";
+            }
+        }
+
+        // When the user clicks on <span> (x), close the modal
+        privacySpan.onclick = function() {
+            privacyModal.style.display = "none";
+        }
+    </script>
+</body>
+
+</html>
