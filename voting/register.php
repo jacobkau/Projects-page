@@ -42,47 +42,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     try {
+        // Check if user already exists
         $checkUserStmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
-        if (!$checkUserStmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-        $checkUserStmt->bind_param("ss", $username, $email);
-        $checkUserStmt->execute();
-        $checkUserStmt->store_result();
-
-        if ($checkUserStmt->num_rows > 0) {
+        $checkUserStmt->execute([$username, $email]);
+        
+        if ($checkUserStmt->rowCount() > 0) {
             echo "<script>alert('Username or Email already exists.'); window.history.back();</script>";
             exit;
         }
-        $checkUserStmt->close();
+        $checkUserStmt->closeCursor();
 
+        // Insert user
         $insertUserStmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, profile_photo) VALUES (?, ?, ?, ?, ?)");
-        if (!$insertUserStmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-        $insertUserStmt->bind_param("sssss", $username, $name, $email, $passwordHash, $profilePhotoPath);
-
-        if (!$insertUserStmt->execute()) {
-            error_log("User insert failed: " . $insertUserStmt->error);
-            throw new Exception("Execute failed: " . $insertUserStmt->error);
+        
+        if (!$insertUserStmt->execute([$username, $name, $email, $passwordHash, $profilePhotoPath])) {
+            throw new Exception("Failed to insert user");
         }
 
-        $userId = $insertUserStmt->insert_id;
-        $insertUserStmt->close();
+        $userId = $conn->lastInsertId();
+        $insertUserStmt->closeCursor();
 
+        // Insert user's election registrations
         $insertElectionStmt = $conn->prepare("INSERT IGNORE INTO user_elections (user_id, election_id) VALUES (?, ?)");
-        if (!$insertElectionStmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-
+        
         foreach ($selectedElections as $electionId) {
-            $insertElectionStmt->bind_param("ii", $userId, $electionId);
-            if (!$insertElectionStmt->execute()) {
-                error_log("Election insert failed: " . $insertElectionStmt->error);
-                throw new Exception("Execute failed: " . $insertElectionStmt->error);
-            }
+            $insertElectionStmt->execute([$userId, $electionId]);
         }
-        $insertElectionStmt->close();
+        $insertElectionStmt->closeCursor();
 
         echo "<script>alert('Registration successful! You have been registered for the selected elections.'); window.location.href = 'login.php';</script>";
 
@@ -134,29 +120,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <label class="form-label">Select Election(s):</label>
                     <?php
                     try {
-                        $stmt = $conn->prepare("SELECT id, title FROM elections WHERE registration_open = 1");
-                        if (!$stmt) {
-                            throw new Exception("Prepare failed: " . $conn->error);
-                        }
+                        // Fetch elections that are active or upcoming (not completed)
+                        $stmt = $conn->prepare("SELECT id, title, status FROM elections WHERE status != 'completed' ORDER BY start_date DESC");
                         $stmt->execute();
-                        $stmt->bind_result($electionId, $electionName);
-
-                        while ($stmt->fetch()) {
-                            echo "<div class='form-check'><input type='checkbox' name='elections[]' value='$electionId' id='election_$electionId' class='form-check-input'><label class='form-check-label' for='election_$electionId'>" . htmlspecialchars($electionName) . "</label></div>";
+                        $elections = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        if (empty($elections)) {
+                            echo "<p class='error-message'>No elections available for registration at this time.</p>";
+                        } else {
+                            foreach ($elections as $election) {
+                                $statusColor = $election['status'] == 'active' ? 'green' : 'orange';
+                                echo "<div class='form-check'>";
+                                echo "<input type='checkbox' name='elections[]' value='" . $election['id'] . "' id='election_" . $election['id'] . "' class='form-check-input'>";
+                                echo "<label class='form-check-label' for='election_" . $election['id'] . "'>";
+                                echo htmlspecialchars($election['title']);
+                                echo " <span style='color: $statusColor; font-size: 12px;'>(" . ucfirst($election['status']) . ")</span>";
+                                echo "</label>";
+                                echo "</div>";
+                            }
                         }
-                        $stmt->close();
+                        $stmt->closeCursor();
                     } catch (Exception $e) {
                         error_log("Election fetch error: " . $e->getMessage());
-                        echo "<p class='error-message'>Error fetching elections. Please try again.</p>";
+                        echo "<p class='error-message'>Error fetching elections. Please try again later.</p>";
                     }
                     ?>
                 </div>
                 <button type="submit" class="form-button">Register</button>
             </form>
+            <div class="register-link">
+                <p>Already have an account? <a href="login.php">Login here</a></p>
+            </div>
         </div>
     </div>
 </body>
 </html>
+
 <style>
    .register-link {
         text-align: center;
@@ -171,6 +170,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     .register-link a:hover {
         text-decoration: underline;
     }
+    
    .registration-container {
     display: flex;
     justify-content: center;
@@ -186,6 +186,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     border-radius: 12px;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
     width: 650px;
+    max-width: 90%;
 }
 
 .registration-title {
@@ -199,12 +200,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 .registration-form {
     display: flex;
     flex-direction: column;
-    align-items: center; /* Center the form elements horizontally */
+    align-items: center;
 }
 
 .form-group {
     margin-bottom: 25px;
-    width: 100%; /* Make form groups take full width */
+    width: 100%;
 }
 
 .form-label {
@@ -213,7 +214,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     color: #4B5563;
     font-weight: 500;
     font-size: 16px;
-    text-align: left; /* Align labels to the left */
+    text-align: left;
 }
 
 .form-input,
@@ -226,7 +227,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     color: #374151;
     background-color: #F9FAFB;
     transition: border-color 0.3s ease;
-    box-sizing: border-box; /* Include padding and border in width */
+    box-sizing: border-box;
 }
 
 .form-input:focus,
@@ -240,7 +241,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     display: flex;
     align-items: center;
     margin-bottom: 10px;
-    justify-content: left; /* Align checkboxes to the left */
+    justify-content: left;
 }
 
 .form-check-input {
@@ -268,7 +269,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     font-weight: 600;
     cursor: pointer;
     transition: background-color 0.3s ease;
-    width: fit-content; /* Make the button only as wide as its content */
+    width: fit-content;
 }
 
 .form-button:hover {
@@ -279,5 +280,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     color: #E11D48;
     font-size: 14px;
     margin-top: 5px;
+    padding: 10px;
+    background-color: #FEE2E2;
+    border-radius: 6px;
+    text-align: center;
 }
 </style>
