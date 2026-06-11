@@ -23,7 +23,7 @@ $dsn .= ";dbname=defaultdb;charset=utf8mb4";
 // 4. Pass the SSL certificate correctly using PHP PDO Array options
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::MYSQL_ATTR_SSL_CA => '/var/www/html/ca.pem', // Absolute path to your certificate
+    PDO::MYSQL_ATTR_SSL_CA => __DIR__ . '/ca.pem',
     PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true    // Forces certificate verification
 ];
 
