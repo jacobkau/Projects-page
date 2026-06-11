@@ -24,7 +24,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         try {
             // 1. Prepare query using the PDO format (targeting 'users' table)
-            $stmt = $conn->prepare("SELECT id, username, password FROM users WHERE username = :username");
+            $stmt = $conn->prepare("SELECT id, username, password FROM admin WHERE username = :username");
             
             // 2. Execute query by passing the value inside an array
             $stmt->execute([':username' => $username]);
