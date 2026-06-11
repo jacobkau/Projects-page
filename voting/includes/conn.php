@@ -1,32 +1,38 @@
 <?php
-// db.php - Safe database connection for Render
+// conn.php - Completely hidden credentials
 
-// 1. Fetch the secret URL from Render's background environment variables
+// 1. Fetch the secret link from Render's hidden environment variables
 $uri = getenv('AIVEN_DATABASE_URL');
 
+// If the background variable is missing, stop the script safely
 if (!$uri) {
-    die("Error: Database connection string is missing in Render settings.");
+    die("Database Connection Error: Secure configuration string is missing.");
 }
 
+// 2. Break down the hidden URL link
 $fields = parse_url($uri);
 
-// 2. Build the connection string using the ca.pem file
+if (!$fields || !isset($fields["host"])) {
+    die("Database Connection Error: Secure configuration string is corrupted.");
+}
+
+// 3. Build the connection string using the absolute path to your certificate
 $conn = "mysql:";
 $conn .= "host=" . $fields["host"];
-$conn .= ";port=" . $fields["port"];
+$conn .= ";port=" . ($fields["port"] ?? '27643');
 $conn .= ";dbname=defaultdb";
-$conn .= ";sslmode=verify-ca;sslrootcert=ca.pem";
+$conn .= ";sslmode=verify-ca;sslrootcert=/var/www/html/ca.pem";
 
 try {
-    // 3. Connect to the database
-    $db = new PDO($conn, $fields["user"], $fields["pass"]);
+    $user = $fields["user"] ?? 'avnadmin';
+    $pass = $fields["pass"] ?? '';
+    
+    // 4. Connect securely
+    $db = new PDO($conn, $user, $pass);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    // You can remove these lines once you verify it works:
-    $stmt = $db->query("SELECT VERSION()");
-    // echo "Connected successfully! MySQL Version: " . $stmt->fetch()[0];
-    
+
 } catch (Exception $e) {
-    die("Database Connection Error: " . $e->getMessage());
+    // We hide the raw error message so it never prints your password on screen
+    die("Database Connection Error: Could not connect to database securely.");
 }
 ?>
