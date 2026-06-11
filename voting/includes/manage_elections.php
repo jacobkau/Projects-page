@@ -13,7 +13,7 @@ function getElections($conn) {
         $sql = "SELECT * FROM elections ORDER BY id DESC";
         $result = $conn->query($sql);
         $elections = [];
-        if ($result->rowCount() > 0) {
+        if ($result && $result->rowCount() > 0) {
             while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
                 $elections[] = $row;
             }
@@ -26,10 +26,10 @@ function getElections($conn) {
 }
 
 // Function to update election status
-function updateElectionStatus($conn, $electionId, $votingOpen, $registrationOpen) {
+function updateElectionStatus($conn, $electionId, $status) {
     try {
-        $stmt = $conn->prepare("UPDATE elections SET voting_open = ?, registration_open = ? WHERE id = ?");
-        $stmt->execute([$votingOpen, $registrationOpen, $electionId]);
+        $stmt = $conn->prepare("UPDATE elections SET status = ? WHERE id = ?");
+        $stmt->execute([$status, $electionId]);
         return true;
     } catch (PDOException $e) {
         error_log("Error updating election status: " . $e->getMessage());
@@ -53,7 +53,6 @@ function getCandidateCountForElection($conn, $electionId) {
 // Function to get registered voter count for an election
 function getRegisteredVoterCountForElection($conn, $electionId) {
     try {
-        // Assuming you have a user_elections table that links users to elections
         $stmt = $conn->prepare("SELECT COUNT(DISTINCT user_id) as count FROM user_elections WHERE election_id = ?");
         $stmt->execute([$electionId]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -67,10 +66,9 @@ function getRegisteredVoterCountForElection($conn, $electionId) {
 // Handle election status updates
 if (isset($_POST['update_election_status'])) {
     $electionId = $_POST['election_id'];
-    $votingOpen = isset($_POST['voting_open']) ? 1 : 0;
-    $registrationOpen = isset($_POST['registration_open']) ? 1 : 0;
+    $status = $_POST['status'];
     
-    if (updateElectionStatus($conn, $electionId, $votingOpen, $registrationOpen)) {
+    if (updateElectionStatus($conn, $electionId, $status)) {
         echo "<p style='color:green;'>Election status updated successfully.</p>";
     } else {
         echo "<p style='color:red;'>Error updating election status.</p>";
@@ -80,8 +78,10 @@ if (isset($_POST['update_election_status'])) {
 // Add Election
 if (isset($_POST['add_election'])) {
     $title = trim($_POST['title']);
+    $description = trim($_POST['description'] ?? '');
     $start_date = $_POST['start_date'];
     $end_date = $_POST['end_date'];
+    $status = $_POST['status'] ?? 'upcoming';
     
     // Validate dates
     if (empty($title)) {
@@ -90,8 +90,8 @@ if (isset($_POST['add_election'])) {
         echo "<p style='color:red;'>End date cannot be earlier than start date.</p>";
     } else {
         try {
-            $stmt = $conn->prepare("INSERT INTO elections (title, start_date, end_date, voting_open, registration_open) VALUES (?, ?, ?, 0, 0)");
-            if ($stmt->execute([$title, $start_date, $end_date])) {
+            $stmt = $conn->prepare("INSERT INTO elections (title, description, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)");
+            if ($stmt->execute([$title, $description, $start_date, $end_date, $status])) {
                 echo "<p style='color:green;'>Election added successfully.</p>";
             } else {
                 echo "<p style='color:red;'>Error adding election.</p>";
@@ -112,8 +112,14 @@ $elections = getElections($conn);
 
     <form method="post">
         <input type="text" name="title" placeholder="Election Title" required>
-        <input type="date" name="start_date" required>
-        <input type="date" name="end_date" required>
+        <textarea name="description" placeholder="Election Description" rows="3"></textarea>
+        <input type="datetime-local" name="start_date" required>
+        <input type="datetime-local" name="end_date" required>
+        <select name="status" required>
+            <option value="upcoming">Upcoming</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+        </select>
         <button type="submit" name="add_election">Add Election</button>
     </form>
 </div>
@@ -127,10 +133,10 @@ $elections = getElections($conn);
             <thead>
                 <tr>
                     <th>Title</th>
+                    <th>Description</th>
                     <th>Start Date</th>
                     <th>End Date</th>
-                    <th>Voting Open</th>
-                    <th>Registration Open</th>
+                    <th>Status</th>
                     <th>Candidates</th>
                     <th>Registered Voters</th>
                     <th>Actions</th>
@@ -140,16 +146,16 @@ $elections = getElections($conn);
                 <?php foreach ($elections as $election) : ?>
                     <tr>
                         <td><?php echo htmlspecialchars($election['title']); ?></td>
-                        <td><?php echo htmlspecialchars($election['start_date']); ?></td>
-                        <td><?php echo htmlspecialchars($election['end_date']); ?></td>
+                        <td><?php echo htmlspecialchars(substr($election['description'] ?? '', 0, 50)) . (strlen($election['description'] ?? '') > 50 ? '...' : ''); ?></td>
+                        <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($election['start_date']))); ?></td>
+                        <td><?php echo htmlspecialchars(date('Y-m-d H:i', strtotime($election['end_date']))); ?></td>
                         <td>
-                            <span style="color: <?php echo $election['voting_open'] ? 'green' : 'red'; ?>">
-                                <?php echo $election['voting_open'] ? 'Yes' : 'No'; ?>
-                            </span>
-                        </td>
-                        <td>
-                            <span style="color: <?php echo $election['registration_open'] ? 'green' : 'red'; ?>">
-                                <?php echo $election['registration_open'] ? 'Yes' : 'No'; ?>
+                            <span style="color: 
+                                <?php 
+                                echo $election['status'] == 'active' ? 'green' : ($election['status'] == 'completed' ? 'red' : 'orange'); 
+                                ?>; 
+                                font-weight: bold;">
+                                <?php echo ucfirst(htmlspecialchars($election['status'])); ?>
                             </span>
                         </td>
                         <td><?php echo getCandidateCountForElection($conn, $election['id']); ?></td>
@@ -157,18 +163,15 @@ $elections = getElections($conn);
                         <td>
                             <form method="post" style="margin: 0;">
                                 <input type="hidden" name="election_id" value="<?php echo $election['id']; ?>">
-                                <label style="display: inline-block; margin-right: 10px;">
-                                    <input type="checkbox" name="voting_open" <?php if ($election['voting_open']) echo 'checked'; ?>> 
-                                    Voting
-                                </label>
-                                <label style="display: inline-block; margin-right: 10px;">
-                                    <input type="checkbox" name="registration_open" <?php if ($election['registration_open']) echo 'checked'; ?>> 
-                                    Registration
-                                </label>
-                                <button type="submit" name="update_election_status" style="padding: 5px 10px; font-size: 12px;">Update</button>
+                                <select name="status" style="padding: 5px; margin-right: 5px;">
+                                    <option value="upcoming" <?php echo $election['status'] == 'upcoming' ? 'selected' : ''; ?>>Upcoming</option>
+                                    <option value="active" <?php echo $election['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
+                                    <option value="completed" <?php echo $election['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
+                                </select>
+                                <button type="submit" name="update_election_status" style="padding: 5px 10px;">Update</button>
                             </form>
                         </td>
-                    </tr>
+                                   </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
@@ -220,13 +223,20 @@ $elections = getElections($conn);
     }
 
     .election-form-container input[type="text"],
-    .election-form-container input[type="date"] {
-        flex: 1 1 45%;
+    .election-form-container input[type="datetime-local"],
+    .election-form-container textarea,
+    .election-form-container select {
+        flex: 1 1 100%;
         padding: 10px;
         border: 1px solid #ccc;
         border-radius: 4px;
         box-sizing: border-box;
         font-size: 16px;
+    }
+
+    .election-form-container textarea {
+        resize: vertical;
+        font-family: inherit;
     }
 
     .election-form-container button[type="submit"] {
@@ -273,15 +283,9 @@ $elections = getElections($conn);
             padding: 5px;
         }
         
-        td form label {
+        td form select {
             font-size: 11px;
-        }
-    }
-    
-    @media (max-width: 600px) {
-        .election-form-container input[type="text"],
-        .election-form-container input[type="date"] {
-            flex: 1 1 100%;
+            padding: 3px;
         }
     }
 </style>
