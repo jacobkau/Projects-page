@@ -1,18 +1,32 @@
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-$servername = " ";
-$username = " ";
-$password = " ";
-$dbname = " ";
+// db.php - Safe database connection for Render
 
-// Create connection
-$conn = new mysqli($servername, $username, $password, $dbname);
+// 1. Fetch the secret URL from Render's background environment variables
+$uri = getenv('AIVEN_DATABASE_URL');
 
-// Check connection
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
+if (!$uri) {
+    die("Error: Database connection string is missing in Render settings.");
 }
-//echo "Connected successfully"; //for debugging.
+
+$fields = parse_url($uri);
+
+// 2. Build the connection string using the ca.pem file
+$conn = "mysql:";
+$conn .= "host=" . $fields["host"];
+$conn .= ";port=" . $fields["port"];
+$conn .= ";dbname=defaultdb";
+$conn .= ";sslmode=verify-ca;sslrootcert=ca.pem";
+
+try {
+    // 3. Connect to the database
+    $db = new PDO($conn, $fields["user"], $fields["pass"]);
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // You can remove these lines once you verify it works:
+    $stmt = $db->query("SELECT VERSION()");
+    // echo "Connected successfully! MySQL Version: " . $stmt->fetch()[0];
+    
+} catch (Exception $e) {
+    die("Database Connection Error: " . $e->getMessage());
+}
 ?>
