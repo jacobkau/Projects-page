@@ -33,6 +33,7 @@ try {
     
     // 5. Connect securely using the options array
     $db = new PDO($dsn, $user, $pass, $options);
+    $conn = $db;
 
 } catch (Exception $e) {
     // If it still fails, let's see the error temporarily so we can fix it!
