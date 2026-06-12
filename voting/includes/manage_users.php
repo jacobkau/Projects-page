@@ -132,19 +132,16 @@ try {
         }
 
         .header h2 {
-            margin: 0;
             font-size: 30px;
             font-weight: 600;
         }
 
         .header p {
-            margin: 10px 0 0;
             opacity: 0.9;
             font-size: 16px;
         }
 
         .container {
-            margin: 0 auto;
             background: white;
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -397,10 +394,10 @@ try {
     </style>
 </head>
 <body>
-    <header>
+    <div class="header">
         <h2>Manage Users</h2>
         <p>View and manage all registered users in the system</p>    
-    </header>
+    </div>
     <div class="container">               
         <div class="content">
             <?php if ($errorMessage): ?>
