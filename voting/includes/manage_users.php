@@ -7,12 +7,83 @@ if (!isset($_SESSION['admin_id']) && !isset($_SESSION['username'])) {
     exit();
 }
 
+// Handle AJAX request for user info - MUST be at the top
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
+    header('Content-Type: application/json');
+    
+    $userId = isset($_POST['user_id']) ? intval($_POST['user_id']) : 0;
+    
+    if ($userId <= 0) {
+        echo json_encode(['error' => 'Invalid user ID']);
+        exit();
+    }
+    
+    try {
+        // Fetch user basic info
+        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
+        $userStmt->execute([$userId]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            echo json_encode(['error' => 'User not found']);
+            exit();
+        }
+        
+        // Fetch user's election registrations
+        $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
+        $regStmt->execute([$userId]);
+        $registrations = $regStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Fetch user's votes
+        $votesStmt = $conn->prepare("SELECT e.id, e.title, DATE(v.voted_at) as date FROM votes v JOIN elections e ON v.election_id = e.id WHERE v.user_id = ? ORDER BY v.voted_at DESC");
+        $votesStmt->execute([$userId]);
+        $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Fetch user's contest applications
+        $contestsStmt = $conn->prepare("SELECT c.postname, e.id as election_id, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
+        $contestsStmt->execute([$userId]);
+        $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Prepare profile photo
+        $profilePhoto = null;
+        $profilePhotoBlob = null;
+        $profilePhotoType = null;
+        
+        if (!empty($user['profile_photo_blob'])) {
+            $profilePhotoBlob = base64_encode($user['profile_photo_blob']);
+            $profilePhotoType = $user['profile_photo_type'];
+        } elseif (!empty($user['profile_photo'])) {
+            $profilePhoto = $user['profile_photo'];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'fullname' => $user['fullname'] ?? 'N/A',
+            'email' => $user['email'],
+            'profile_photo' => $profilePhoto,
+            'profile_photo_blob' => $profilePhotoBlob,
+            'profile_photo_type' => $profilePhotoType,
+            'registered_date' => $user['registered_date'],
+            'registrations' => $registrations,
+            'votes' => $votes,
+            'contests' => $contests
+        ]);
+        
+    } catch (PDOException $e) {
+        error_log("Error fetching user info: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error occurred']);
+    }
+    exit();
+}
+
 // Fetch all users from the database
 $users = [];
 $errorMessage = "";
 
 try {
-    $stmt = $conn->prepare("SELECT id, username, name as full_name, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users ORDER BY id");
+    $stmt = $conn->prepare("SELECT id, username, name as full_name, email, profile_photo, date as registered_date FROM users ORDER BY id");
     $stmt->execute();
     $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -38,7 +109,26 @@ try {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
+        }
+
+        /* Transparent Header - No background color */
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            color: white;
+            background: transparent;
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 10px 0 0;
+            opacity: 0.9;
+            font-size: 16px;
         }
 
         .container {
@@ -46,24 +136,8 @@ try {
             margin: 0 auto;
             background: white;
             border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
             overflow: hidden;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-        }
-
-        .header h2 {
-            margin: 0;
-            font-size: 28px;
-        }
-
-        .header p {
-            margin: 8px 0 0;
-            opacity: 0.9;
         }
 
         .content {
@@ -78,10 +152,8 @@ try {
         table {
             width: 100%;
             border-collapse: collapse;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             border-radius: 8px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         th, td {
@@ -107,7 +179,6 @@ try {
             color: white;
             padding: 8px 16px;
             text-align: center;
-            text-decoration: none;
             display: inline-block;
             font-size: 13px;
             cursor: pointer;
@@ -145,7 +216,7 @@ try {
             padding: 0;
             border-radius: 16px;
             width: 90%;
-            max-width: 550px;
+            max-width: 600px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             animation: slideDown 0.3s;
             overflow: hidden;
@@ -191,7 +262,7 @@ try {
 
         .modal-body {
             padding: 25px;
-            max-height: 60vh;
+            max-height: 65vh;
             overflow-y: auto;
         }
 
@@ -232,31 +303,31 @@ try {
         }
 
         .info-list li {
-            margin: 6px 0;
+            margin: 8px 0;
             color: #555;
         }
 
-        .badge {
+        .election-status {
             display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
         }
 
-        .badge-success {
+        .status-active {
             background: #d4edda;
             color: #155724;
         }
 
-        .badge-info {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .badge-warning {
+        .status-upcoming {
             background: #fff3cd;
             color: #856404;
+        }
+
+        .status-completed {
+            background: #f8d7da;
+            color: #721c24;
         }
 
         .loading {
@@ -294,10 +365,6 @@ try {
             color: #999;
         }
 
-        .empty-state p {
-            margin-top: 10px;
-        }
-
         @media screen and (max-width: 768px) {
             .content {
                 padding: 15px;
@@ -313,26 +380,19 @@ try {
                 min-width: auto;
             }
             
-            .info-list {
-                margin-left: 15px;
-            }
-            
             .modal-content {
                 margin: 10% auto;
                 width: 95%;
-            }
-            
-            .modal-header h4 {
-                font-size: 18px;
             }
         }
     </style>
 </head>
 <body>
-    <center class="header">
-        <h2> Manage Users</h2>
-            <p>View and manage all registered users in the system</p>
-    </center>
+    <div class="header">
+        <h2>📋 Manage Users</h2>
+        <p>View and manage all registered users in the system</p>
+    </div>
+    
     <div class="container">               
         <div class="content">
             <?php if ($errorMessage): ?>
@@ -346,7 +406,7 @@ try {
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
-                    <table>
+                    <table id="usersTable">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -396,15 +456,11 @@ try {
     </div>
 
     <script>
-    // Store user data cache to avoid multiple requests
-    const userCache = {};
-    
     async function showUserInfo(userId) {
         const modal = document.getElementById('userModal');
         const modalBody = document.getElementById('modalBody');
         const modalTitle = document.getElementById('modalTitle');
         
-        // Show modal with loading state
         modal.style.display = 'block';
         modalBody.innerHTML = `
             <div class="loading">
@@ -414,20 +470,17 @@ try {
         `;
         modalTitle.textContent = `User Information - ID: ${userId}`;
         
-        // Check cache first
-        if (userCache[userId]) {
-            displayUserInfo(userCache[userId]);
-            return;
-        }
-        
         try {
-            // Fetch user data using the current file with AJAX
+            const formData = new URLSearchParams();
+            formData.append('action', 'get_user');
+            formData.append('user_id', userId);
+            
             const response = await fetch(window.location.href, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: 'action=get_user&user_id=' + userId
+                body: formData.toString()
             });
             
             const data = await response.json();
@@ -435,7 +488,6 @@ try {
             if (data.error) {
                 modalBody.innerHTML = `<div class="error-message">❌ ${data.error}</div>`;
             } else {
-                userCache[userId] = data;
                 displayUserInfo(data);
             }
         } catch (error) {
@@ -449,22 +501,25 @@ try {
         
         // Handle profile photo
         let profilePhotoHtml = '';
-        if (data.profile_photo && data.profile_photo.startsWith('data:image')) {
-            profilePhotoHtml = `<img src="${data.profile_photo}" alt="Profile Photo">`;
+        if (data.profile_photo_blob) {
+            profilePhotoHtml = `<img src="data:image/${data.profile_photo_type};base64,${data.profile_photo_blob}" alt="Profile Photo">`;
         } else if (data.profile_photo && data.profile_photo !== '') {
             profilePhotoHtml = `<img src="uploads/${data.profile_photo}" alt="Profile Photo" onerror="this.src='faces/default.jpg'">`;
-        } else if (data.profile_photo_blob) {
-            profilePhotoHtml = `<img src="data:image/${data.profile_photo_type};base64,${data.profile_photo_blob}" alt="Profile Photo">`;
         } else {
             profilePhotoHtml = `<img src="faces/default.jpg" alt="Default Profile Photo">`;
         }
         
-        // Format registrations
+        // Format registrations with status
         let registrationsHtml = '';
         if (data.registrations && data.registrations.length > 0) {
             registrationsHtml = '<ul class="info-list">';
             data.registrations.forEach(reg => {
-                registrationsHtml += `<li> ${escapeHtml(reg)}</li>`;
+                let statusClass = '';
+                if (reg.status === 'active') statusClass = 'status-active';
+                else if (reg.status === 'upcoming') statusClass = 'status-upcoming';
+                else if (reg.status === 'completed') statusClass = 'status-completed';
+            
+                registrationsHtml += `<li> ${escapeHtml(reg.title)} <span class="election-status ${statusClass}">${escapeHtml(reg.status)}</span></li>`;
             });
             registrationsHtml += '</ul>';
         } else {
@@ -476,7 +531,7 @@ try {
         if (data.votes && data.votes.length > 0) {
             votesHtml = '<ul class="info-list">';
             data.votes.forEach(vote => {
-                votesHtml += `<li>${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
+                votesHtml += `<li> ${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
             });
             votesHtml += '</ul>';
         } else {
@@ -503,7 +558,7 @@ try {
                 <strong> Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
-                <strong>Full Name:</strong> ${escapeHtml(data.fullname)}
+                <strong> Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
                 <strong> Email:</strong> ${escapeHtml(data.email)}
@@ -512,7 +567,7 @@ try {
                 <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
-                <strong>Election Registrations:</strong>
+                <strong> Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
@@ -537,7 +592,6 @@ try {
         return div.innerHTML;
     }
     
-    // Close modal when clicking outside
     window.onclick = function(event) {
         const modal = document.getElementById('userModal');
         if (event.target === modal) {
@@ -545,7 +599,6 @@ try {
         }
     }
     
-    // Close modal with Escape key
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
             closeModal();
@@ -554,75 +607,3 @@ try {
     </script>
 </body>
 </html>
-
-<?php
-// Handle AJAX request for user info
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
-    header('Content-Type: application/json');
-    
-    $userId = isset($_POST['user_id']) ? intval($_POST['user_id']) : 0;
-    
-    if ($userId <= 0) {
-        echo json_encode(['error' => 'Invalid user ID']);
-        exit();
-    }
-    
-    try {
-        // Fetch user basic info
-        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
-        $userStmt->execute([$userId]);
-        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$user) {
-            echo json_encode(['error' => 'User not found']);
-            exit();
-        }
-        
-        // Fetch user's election registrations
-        $regStmt = $conn->prepare("SELECT e.title FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
-        $regStmt->execute([$userId]);
-        $registrations = $regStmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        // Fetch user's votes
-        $votesStmt = $conn->prepare("SELECT e.title, DATE(v.voted_at) as date FROM votes v JOIN elections e ON v.election_id = e.id WHERE v.user_id = ? ORDER BY v.voted_at DESC");
-        $votesStmt->execute([$userId]);
-        $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Fetch user's contest applications
-        $contestsStmt = $conn->prepare("SELECT c.postname, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
-        $contestsStmt->execute([$userId]);
-        $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Prepare profile photo (convert BLOB to base64 if needed)
-        $profilePhoto = null;
-        $profilePhotoBlob = null;
-        $profilePhotoType = null;
-        
-        if (!empty($user['profile_photo_blob'])) {
-            $profilePhotoBlob = base64_encode($user['profile_photo_blob']);
-            $profilePhotoType = $user['profile_photo_type'];
-        } elseif (!empty($user['profile_photo'])) {
-            $profilePhoto = $user['profile_photo'];
-        }
-        
-        echo json_encode([
-            'id' => $user['id'],
-            'username' => $user['username'],
-            'fullname' => $user['fullname'] ?? 'N/A',
-            'email' => $user['email'],
-            'profile_photo' => $profilePhoto,
-            'profile_photo_blob' => $profilePhotoBlob,
-            'profile_photo_type' => $profilePhotoType,
-            'registered_date' => $user['registered_date'],
-            'registrations' => $registrations,
-            'votes' => $votes,
-            'contests' => $contests
-        ]);
-        
-    } catch (PDOException $e) {
-        error_log("Error fetching user info: " . $e->getMessage());
-        echo json_encode(['error' => 'Database error occurred']);
-    }
-    exit();
-}
-?>
