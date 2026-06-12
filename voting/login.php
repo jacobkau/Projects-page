@@ -21,7 +21,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                 $_SESSION['username'] = $row['username'];
                 $_SESSION['full_name'] = $row['name'];  // Note: 'name' column, not 'full_name'
                 $_SESSION['email'] = $row['email'];
-                $_SESSION['profile_photo'] = $row['profile_photo'];
+                if (!empty($row['profile_photo_blob'])) {
+        $_SESSION['profile_photo'] = 'data:image/' . $row['profile_photo_type'] . ';base64,' . base64_encode($row['profile_photo_blob']);
+    } else {
+        $_SESSION['profile_photo'] = null;
+    }
+    
                 $_SESSION['user_logged_in'] = true;
 
                 // Redirect to profile page
