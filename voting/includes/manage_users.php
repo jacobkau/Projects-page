@@ -19,9 +19,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     }
     
     try {
-        // Fetch user basic info
-        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
-        $userStmt->execute([$userId]);
+        // 1. Fetch user basic info using safe named place markers
+        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = :id");
+        $userStmt->execute([':id' => $userId]);
         $user = $userStmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$user) {
@@ -29,22 +29,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             exit();
         }
         
-        // Fetch user's election registrations
-        $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
-        $regStmt->execute([$userId]);
-        $registrations = $regStmt->fetchAll(PDO::FETCH_ASSOC);
+        // 2. Fallback empty arrays for mismatched tracking systems
+        $registrations = [];
+        $contests = [];
         
-        // Fetch user's votes
-        $votesStmt = $conn->prepare("SELECT e.id, e.title, DATE(v.voted_at) as date FROM votes v JOIN elections e ON v.election_id = e.id WHERE v.user_id = ? ORDER BY v.voted_at DESC");
-        $votesStmt->execute([$userId]);
-        $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
+        // Try/Catch blocks ensure if separate plugin tables are missing, the modal STILL opens
+        try {
+            $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = :id");
+            $regStmt->execute([':id' => $userId]);
+            $registrations = $regStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $registrations = []; }
+
+        // 3. Adjusted Votes query to match your actual schema (selecting choices instead of election_id join)
+        try {
+            $votesStmt = $conn->prepare("SELECT id, chairperson, vicechairperson, secretary, date FROM votes WHERE username = :username ORDER BY date DESC");
+            $votesStmt->execute([':username' => $user['username']]);
+            $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $votes = []; }
         
-        // Fetch user's contest applications
-        $contestsStmt = $conn->prepare("SELECT c.postname, e.id as election_id, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
-        $contestsStmt->execute([$userId]);
-        $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $contestsStmt = $conn->prepare("SELECT postname, name FROM contesters WHERE name = :name");
+            $contestsStmt->execute([':name' => $user['fullname']]);
+            $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $contests = []; }
         
-        // Prepare profile photo
+        // 4. Prepare profile photo assets safely
         $profilePhoto = null;
         $profilePhotoBlob = null;
         $profilePhotoType = null;
@@ -56,6 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $profilePhoto = $user['profile_photo'];
         }
         
+        // 5. Send clean JSON response block
         echo json_encode([
             'success' => true,
             'id' => $user['id'],
@@ -72,12 +82,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         ]);
         
     } catch (PDOException $e) {
-        error_log("Error fetching user info: " . $e->getMessage());
-        echo json_encode(['error' => 'Database error occurred']);
+        echo json_encode(['error' => 'Database exception: ' . $e->getMessage()]);
     }
     exit();
 }
-
 // Fetch all users from the database
 $users = [];
 $errorMessage = "";
