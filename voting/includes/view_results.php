@@ -1,4 +1,5 @@
 <?php
+session_start(); // Add session start
 include("conn.php");
 
 // Admin Authentication
@@ -6,6 +7,11 @@ if (!isset($_SESSION['admin_id'])) {
     header("Location: admin_login.php");
     exit();
 }
+
+// Enable error reporting for debugging (remove in production)
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 // Fetch Elections
 try {
@@ -15,6 +21,9 @@ try {
 } catch (PDOException $e) {
     error_log("Error fetching elections: " . $e->getMessage());
     $elections = [];
+    echo "<div style='background:#f8d7da; color:#721c24; padding:15px; margin:10px; border-radius:5px;'>";
+    echo "<strong>Database Error:</strong> " . htmlspecialchars($e->getMessage());
+    echo "</div>";
 }
 
 function analyzeElectionResults($conn, $electionId) {
@@ -26,6 +35,15 @@ function analyzeElectionResults($conn, $electionId) {
         $electionTitle = $electionTitleRow ? $electionTitleRow['title'] : 'Unknown Election';
         $electionTitleStmt->closeCursor();
 
+        // Check if election_posts table exists
+        $tableCheck = $conn->query("SHOW TABLES LIKE 'election_posts'");
+        if ($tableCheck->rowCount() == 0) {
+            return "<div style='background:#fff3cd; color:#856404; padding:15px; margin:10px; border-radius:5px;'>
+                        <strong>⚠️ Table Missing:</strong> The 'election_posts' table doesn't exist. 
+                        Please run: CREATE TABLE election_posts (id INT AUTO_INCREMENT PRIMARY KEY, election_id INT NOT NULL, postname VARCHAR(100) NOT NULL)
+                    </div>";
+        }
+        
         // Get posts for this election
         $postsStmt = $conn->prepare("SELECT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
         $postsStmt->execute([$electionId]);
@@ -35,8 +53,18 @@ function analyzeElectionResults($conn, $electionId) {
         $analysis = "<h3>Election: " . htmlspecialchars($electionTitle) . "</h3>";
 
         if (empty($posts)) {
-            $analysis .= "<p>No positions defined for this election.</p>";
+            $analysis .= "<div style='background:#fff3cd; color:#856404; padding:10px; margin:10px 0; border-radius:5px;'>";
+            $analysis .= "No positions defined for this election. Add positions using the 'Manage Posts' button in elections management.";
+            $analysis .= "</div>";
             return $analysis;
+        }
+
+        // Check if votes table exists
+        $votesTableCheck = $conn->query("SHOW TABLES LIKE 'votes'");
+        if ($votesTableCheck->rowCount() == 0) {
+            return "<div style='background:#fff3cd; color:#856404; padding:15px; margin:10px; border-radius:5px;'>
+                        <strong>⚠️ Table Missing:</strong> The 'votes' table doesn't exist.
+                    </div>";
         }
 
         foreach ($posts as $post) {
@@ -62,20 +90,41 @@ function analyzeElectionResults($conn, $electionId) {
                     $candidate = $vote['candidate_name'];
                     $count = $vote['vote_count'];
                     $totalVotes += $count;
-                    $percentage = ($count / $totalVotes) * 100;
+                }
+                
+                foreach ($votes as $vote) {
+                    $candidate = $vote['candidate_name'];
+                    $count = $vote['vote_count'];
+                    $percentage = ($totalVotes > 0) ? ($count / $totalVotes) * 100 : 0;
                     $analysis .= "<li>" . htmlspecialchars($candidate) . ": " . $count . " votes (" . number_format($percentage, 1) . "%)</li>";
                 }
                 $analysis .= "</ul>";
                 $analysis .= "<p><strong>Total votes for this position:</strong> " . $totalVotes . "</p>";
             } else {
-                $analysis .= "<p>No votes recorded for this position.</p>";
+                $analysis .= "<div style='background:#e2e3e5; color:#383d41; padding:10px; margin:10px 0; border-radius:5px;'>";
+                $analysis .= "No votes recorded for this position yet.";
+                $analysis .= "</div>";
             }
         }
         return $analysis;
     } catch (PDOException $e) {
         error_log("Error analyzing election results: " . $e->getMessage());
-        return "<p>Error analyzing results for election ID: " . htmlspecialchars($electionId) . "</p>";
+        return "<div style='background:#f8d7da; color:#721c24; padding:15px; margin:10px; border-radius:5px;'>
+                    <strong>Database Error:</strong> " . htmlspecialchars($e->getMessage()) . "
+                </div>";
     }
+}
+
+// Debug: Display table structure info
+$debug = [];
+try {
+    $tables = ['elections', 'election_posts', 'votes', 'contesters'];
+    foreach ($tables as $table) {
+        $check = $conn->query("SHOW TABLES LIKE '$table'");
+        $debug[$table] = $check->rowCount() > 0;
+    }
+} catch (Exception $e) {
+    $debug['error'] = $e->getMessage();
 }
 ?>
 
@@ -94,12 +143,42 @@ function analyzeElectionResults($conn, $electionId) {
         ul { background-color: #f9f9f9; padding: 15px 15px 15px 35px; border-radius: 5px; }
         li { margin: 8px 0; }
         .no-data { color: #999; font-style: italic; padding: 10px; text-align: center; }
+        .debug-panel { 
+            background: #2c3e50; 
+            color: #ecf0f1; 
+            padding: 15px; 
+            margin-bottom: 20px; 
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .debug-panel h4 { color: #3498db; margin-top: 0; }
+        .debug-panel ul { background: none; padding: 0; margin: 0; list-style: none; }
+        .debug-panel li { margin: 5px 0; }
+        .debug-panel .good { color: #2ecc71; }
+        .debug-panel .bad { color: #e74c3c; }
         @media (max-width: 768px) { .admin-container { width: 95%; } }
     </style>
 </head>
 <body>
     <div class="admin-container">
         <h2>Voting Results Analysis</h2>
+        
+        <!-- Debug Panel - Remove after fixing -->
+        <div class="debug-panel">
+            <h4>🔧 System Check</h4>
+            <ul>
+                <?php foreach ($debug as $table => $exists): ?>
+                    <?php if ($table != 'error'): ?>
+                        <li>Table '<?php echo $table; ?>': <?php echo $exists ? '<span class="good">✓ Exists</span>' : '<span class="bad">✗ Missing</span>'; ?></li>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+                <?php if (isset($debug['error'])): ?>
+                    <li class="bad">Error: <?php echo $debug['error']; ?></li>
+                <?php endif; ?>
+            </ul>
+            <p><small>If any tables are missing, run the necessary CREATE TABLE queries.</small></p>
+        </div>
         
         <?php if (empty($elections)): ?>
             <p class="no-data">No elections found. Please create an election first.</p>
@@ -113,6 +192,6 @@ function analyzeElectionResults($conn, $electionId) {
 </html>
 
 <?php
-// Close PDO connection by setting to null
+// Close PDO connection
 $conn = null;
 ?>
