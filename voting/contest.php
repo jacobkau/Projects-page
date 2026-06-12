@@ -7,7 +7,7 @@ if (empty($_SESSION["username"])) {
     exit();
 }
 
-// Fetch all elections using PDO
+// Fetch all elections
 try {
     $electionsStmt = $conn->prepare("SELECT id, title FROM elections ORDER BY id DESC");
     $electionsStmt->execute();
@@ -15,6 +15,13 @@ try {
 } catch (PDOException $e) {
     error_log("Error fetching elections: " . $e->getMessage());
     $elections = [];
+}
+
+function getProfileImage($profilePhotoBlob, $profilePhotoType) {
+    if (!empty($profilePhotoBlob)) {
+        return 'data:image/' . $profilePhotoType . ';base64,' . base64_encode($profilePhotoBlob);
+    }
+    return 'default-avatar.png';
 }
 ?>
 
@@ -24,27 +31,24 @@ try {
     <meta charset="UTF-8">
     <title>OVMS | Contestants</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="An online Voting Management System.">
-    <meta name="keywords" content="portfolio, projects, web development, design">
-    <meta name="author" content="Jacob witty">
-    <link rel="icon" href="logo.jpg" type="image/x-icon">
     <style>
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             margin: 0; 
             padding: 0; 
-            background-color: #f4f4f4; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         
         .navbar { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             color: white; 
             padding: 15px 20px; 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
             flex-wrap: wrap;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
         }
         
         .navbar .title h1 { 
@@ -66,7 +70,8 @@ try {
             transition: background-color 0.3s;
         }
         
-        .navbar a:hover {
+        .navbar a:hover,
+        .navbar a.active { 
             background-color: rgba(255,255,255,0.2);
         }
         
@@ -76,8 +81,8 @@ try {
             margin: 40px auto; 
             background-color: white; 
             padding: 30px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+            border-radius: 16px; 
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2); 
         }
         
         .contest-container h1 {
@@ -154,11 +159,12 @@ try {
         }
         
         footer { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             color: white; 
             text-align: center; 
             padding: 20px; 
-            margin-top: 40px; 
+            margin-top: 40px;
+            backdrop-filter: blur(10px);
         }
         
         footer ul { 
@@ -235,22 +241,15 @@ try {
                     <h2><?php echo htmlspecialchars($election['title']); ?></h2>
 
                     <?php
-                    // Fetch posts for the election from election_posts table
+                    // Fetch posts for the election
                     try {
-                        $postsStmt = $conn->prepare("SELECT DISTINCT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
+                        $postsStmt = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
                         $postsStmt->execute([$election['id']]);
                         $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
                         
-                        if (empty($posts)) {
-                            // Try fetching from contesters table if no posts in election_posts
-                            $postsStmt2 = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
-                            $postsStmt2->execute([$election['id']]);
-                            $posts = $postsStmt2->fetchAll(PDO::FETCH_ASSOC);
-                        }
-                        
                         if (empty($posts)):
                     ?>
-                            <p style="color: #999; font-style: italic;">No positions available for this election.</p>
+                            <p style="color: #999; font-style: italic;">No candidates have applied for this election yet.</p>
                         <?php else: ?>
                             <?php foreach ($posts as $post): ?>
                                 <div class="post-section">
@@ -262,32 +261,34 @@ try {
                                                 <th width="80">Photo</th>
                                                 <th width="200">Candidate Name</th>
                                                 <th>Bio / Manifesto</th>
+                                                <th width="80">Votes</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <?php
                                             // Fetch contesters for the post
-                                            $contestersStmt = $conn->prepare("SELECT name, bio, profile_photo FROM contesters WHERE election_id = ? AND postname = ? ORDER BY name");
+                                            $contestersStmt = $conn->prepare("SELECT name, bio, profile_photo_blob, profile_photo_type, votes FROM contesters WHERE election_id = ? AND postname = ? ORDER BY votes DESC");
                                             $contestersStmt->execute([$election['id'], $post['postname']]);
                                             $contesters = $contestersStmt->fetchAll(PDO::FETCH_ASSOC);
                                             
                                             if (empty($contesters)):
                                             ?>
                                                 <tr>
-                                                    <td colspan="3" style="text-align: center;">No contestants for this position</td>
+                                                    <td colspan="4" style="text-align: center;">No contestants for this position</td>
                                                 </tr>
                                             <?php else: ?>
                                                 <?php foreach ($contesters as $contester): ?>
                                                     <tr>
                                                         <td style="text-align: center;">
-                                                            <?php if (!empty($contester['profile_photo']) && file_exists('faces/' . $contester['profile_photo'])): ?>
-                                                                <img src="faces/<?php echo htmlspecialchars($contester['profile_photo']); ?>" alt="Contester" class="contester-image">
+                                                            <?php if (!empty($contester['profile_photo_blob'])): ?>
+                                                                <img src="data:image/<?php echo $contester['profile_photo_type']; ?>;base64,<?php echo base64_encode($contester['profile_photo_blob']); ?>" alt="Contester" class="contester-image">
                                                             <?php else: ?>
-                                                                <img src="faces/default.jpg" alt="Default" class="contester-image">
+                                                                <img src="default-avatar.png" alt="Default" class="contester-image">
                                                             <?php endif; ?>
-                                                        </td>
+                                                         </td>
                                                         <td><strong><?php echo htmlspecialchars($contester['name']); ?></strong></td>
                                                         <td><?php echo nl2br(htmlspecialchars($contester['bio'] ?? 'No bio provided')); ?></td>
+                                                        <td><strong><?php echo $contester['votes']; ?></strong> votes</td>
                                                     </tr>
                                                 <?php endforeach; ?>
                                             <?php endif; ?>
