@@ -10,7 +10,7 @@ if (!isset($_SESSION['admin_id'])) {
     exit();
 }
 
-// Handle AJAX requests for posts
+// Handle AJAX requests for posts - MUST be at the top
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax_action'])) {
     header('Content-Type: application/json');
     
@@ -133,66 +133,16 @@ if (isset($_POST['delete_election'])) {
     }
 }
 
-function getElections($conn) {
-    try {
-        $sql = "SELECT * FROM elections ORDER BY id DESC";
-        $result = $conn->query($sql);
-        $elections = [];
-        if ($result && $result->rowCount() > 0) {
-            while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
-                $elections[] = $row;
-            }
-        }
-        return $elections;
-    } catch (PDOException $e) {
-        error_log("Error fetching elections: " . $e->getMessage());
-        return [];
-    }
-}
-
-function updateElectionStatus($conn, $electionId, $status) {
-    try {
-        $stmt = $conn->prepare("UPDATE elections SET status = ? WHERE id = ?");
-        $stmt->execute([$status, $electionId]);
-        return true;
-    } catch (PDOException $e) {
-        error_log("Error updating election status: " . $e->getMessage());
-        return false;
-    }
-}
-
-function getCandidateCountForElection($conn, $electionId) {
-    try {
-        $stmt = $conn->prepare("SELECT COUNT(c.id) as count FROM contesters c WHERE c.election_id = ?");
-        $stmt->execute([$electionId]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result ? $result['count'] : 0;
-    } catch (PDOException $e) {
-        error_log("Error getting candidate count: " . $e->getMessage());
-        return 0;
-    }
-}
-
-function getRegisteredVoterCountForElection($conn, $electionId) {
-    try {
-        $stmt = $conn->prepare("SELECT COUNT(DISTINCT user_id) as count FROM user_elections WHERE election_id = ?");
-        $stmt->execute([$electionId]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result ? $result['count'] : 0;
-    } catch (PDOException $e) {
-        error_log("Error getting voter count: " . $e->getMessage());
-        return 0;
-    }
-}
-
 // Handle election status updates
 if (isset($_POST['update_election_status'])) {
     $electionId = $_POST['election_id'];
     $status = $_POST['status'];
     
-    if (updateElectionStatus($conn, $electionId, $status)) {
+    try {
+        $stmt = $conn->prepare("UPDATE elections SET status = ? WHERE id = ?");
+        $stmt->execute([$status, $electionId]);
         $successMsg = "Election status updated successfully.";
-    } else {
+    } catch (PDOException $e) {
         $errorMsg = "Error updating election status.";
     }
 }
@@ -225,6 +175,45 @@ if (isset($_POST['add_election'])) {
 }
 
 // Get elections
+function getElections($conn) {
+    try {
+        $sql = "SELECT * FROM elections ORDER BY id DESC";
+        $result = $conn->query($sql);
+        $elections = [];
+        if ($result && $result->rowCount() > 0) {
+            while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
+                $elections[] = $row;
+            }
+        }
+        return $elections;
+    } catch (PDOException $e) {
+        error_log("Error fetching elections: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getCandidateCountForElection($conn, $electionId) {
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(c.id) as count FROM contesters c WHERE c.election_id = ?");
+        $stmt->execute([$electionId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result['count'] : 0;
+    } catch (PDOException $e) {
+        return 0;
+    }
+}
+
+function getRegisteredVoterCountForElection($conn, $electionId) {
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(DISTINCT user_id) as count FROM user_elections WHERE election_id = ?");
+        $stmt->execute([$electionId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result['count'] : 0;
+    } catch (PDOException $e) {
+        return 0;
+    }
+}
+
 $elections = getElections($conn);
 
 // Get selected election for editing
@@ -448,37 +437,27 @@ if (isset($_GET['edit_id'])) {
             cursor: pointer;
         }
         
-        /* Style for the update buttons in the table */
         td form button {
             background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            transition: background-color 0.3s ease;
         }
         
         td form button:hover {
             background-color: #45a049;
         }
 
-        /* Responsive adjustments */
         @media (max-width: 768px) {
             .election-form-container {
                 width: 95%;
             }
-            
             table {
                 font-size: 12px;
             }
-            
             th, td {
                 padding: 5px;
-            }
-            
-            td form select {
-                font-size: 11px;
-                padding: 3px;
             }
         }
     </style>
@@ -512,7 +491,7 @@ if (isset($_GET['edit_id'])) {
                 <?php echo $editElection ? 'Update Election' : 'Add Election'; ?>
             </button>
             <?php if ($editElection): ?>
-                <a href="?page=elections" style="text-align: center; display: block; margin-top: 10px; color: #666;">Cancel Edit</a>
+                <a href="manage_elections.php" style="text-align: center; display: block; margin-top: 10px; color: #666;">Cancel Edit</a>
             <?php endif; ?>
         </form>
     </div>
@@ -561,9 +540,9 @@ if (isset($_GET['edit_id'])) {
                                         <option value="active" <?php echo $election['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
                                         <option value="completed" <?php echo $election['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
                                     </select>
-                                    <button type="submit" name="update_election_status" style="padding: 5px 10px;">Update</button>
+                                    <button type="submit" name="update_election_status">Update</button>
                                 </form>
-                                <a href="?page=elections&edit_id=<?php echo $election['id']; ?>" class="btn btn-edit btn-sm">Edit</a>
+                                <a href="manage_elections.php?edit_id=<?php echo $election['id']; ?>" class="btn btn-edit btn-sm">Edit</a>
                                 <button onclick="deleteElection(<?php echo $election['id']; ?>)" class="btn btn-delete btn-sm">Delete</button>
                                 <button onclick="managePosts(<?php echo $election['id']; ?>, '<?php echo htmlspecialchars(addslashes($election['title'])); ?>')" class="btn btn-posts btn-sm">Manage Posts</button>
                             </td>
@@ -595,9 +574,8 @@ if (isset($_GET['edit_id'])) {
 
     <script>
     let currentElectionId = null;
-    
-    // Get the base URL for AJAX requests - use the current file path
-    const ajaxUrl = window.location.pathname + '?page=elections';
+    // IMPORTANT: Use the full path to manage_elections.php
+    const ajaxUrl = 'manage_elections.php';
     
     function managePosts(electionId, electionTitle) {
         currentElectionId = electionId;
@@ -648,7 +626,7 @@ if (isset($_GET['edit_id'])) {
             }
         } catch (error) {
             console.error('Error:', error);
-            postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts. Please check console for details.</p>';
+            postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts. Please check that manage_elections.php exists.</p>';
         }
     }
     
@@ -719,6 +697,7 @@ if (isset($_GET['edit_id'])) {
         if (confirm('⚠️ Are you sure you want to delete this election? This will also delete all associated posts, candidates, votes, and user registrations. This action cannot be undone!')) {
             const form = document.createElement('form');
             form.method = 'POST';
+            form.action = 'manage_elections.php';
             form.innerHTML = `<input type="hidden" name="delete_election" value="1"><input type="hidden" name="election_id" value="${electionId}">`;
             document.body.appendChild(form);
             form.submit();
