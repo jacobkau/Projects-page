@@ -1,5 +1,7 @@
 <?php
-session_start(); // Add session start
+// Remove session_start() since it's already started in main.php
+// session_start(); // Comment this out - it's already started
+
 include("conn.php");
 
 // Admin Authentication
@@ -7,11 +9,6 @@ if (!isset($_SESSION['admin_id'])) {
     header("Location: admin_login.php");
     exit();
 }
-
-// Enable error reporting for debugging (remove in production)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
 
 // Fetch Elections
 try {
@@ -35,16 +32,7 @@ function analyzeElectionResults($conn, $electionId) {
         $electionTitle = $electionTitleRow ? $electionTitleRow['title'] : 'Unknown Election';
         $electionTitleStmt->closeCursor();
 
-        // Check if election_posts table exists
-        $tableCheck = $conn->query("SHOW TABLES LIKE 'election_posts'");
-        if ($tableCheck->rowCount() == 0) {
-            return "<div style='background:#fff3cd; color:#856404; padding:15px; margin:10px; border-radius:5px;'>
-                        <strong>⚠️ Table Missing:</strong> The 'election_posts' table doesn't exist. 
-                        Please run: CREATE TABLE election_posts (id INT AUTO_INCREMENT PRIMARY KEY, election_id INT NOT NULL, postname VARCHAR(100) NOT NULL)
-                    </div>";
-        }
-        
-        // Get posts for this election
+        // Get posts for this election from election_posts table
         $postsStmt = $conn->prepare("SELECT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
         $postsStmt->execute([$electionId]);
         $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -54,55 +42,65 @@ function analyzeElectionResults($conn, $electionId) {
 
         if (empty($posts)) {
             $analysis .= "<div style='background:#fff3cd; color:#856404; padding:10px; margin:10px 0; border-radius:5px;'>";
-            $analysis .= "No positions defined for this election. Add positions using the 'Manage Posts' button in elections management.";
+            $analysis .= "No positions defined for this election. Add positions using the 'Manage Posts' button.";
             $analysis .= "</div>";
             return $analysis;
-        }
-
-        // Check if votes table exists
-        $votesTableCheck = $conn->query("SHOW TABLES LIKE 'votes'");
-        if ($votesTableCheck->rowCount() == 0) {
-            return "<div style='background:#fff3cd; color:#856404; padding:15px; margin:10px; border-radius:5px;'>
-                        <strong>⚠️ Table Missing:</strong> The 'votes' table doesn't exist.
-                    </div>";
         }
 
         foreach ($posts as $post) {
             $position = $post['postname'];
             $analysis .= "<h4>Position: " . htmlspecialchars($position) . "</h4>";
 
-            // Get vote counts for this position
-            $sql = "SELECT candidate_name, COUNT(*) as vote_count 
-                    FROM votes 
-                    WHERE election_id = ? AND postname = ? 
-                    GROUP BY candidate_name 
-                    ORDER BY vote_count DESC";
+            // Get vote counts for this position based on your table structure
+            // Since your votes table has columns like chairperson, vicechairperson, etc.
+            // Convert position name to lowercase column name (remove spaces)
+            $columnName = strtolower(str_replace(' ', '', $position));
             
-            $votesStmt = $conn->prepare($sql);
-            $votesStmt->execute([$electionId, $position]);
-            $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
-            $votesStmt->closeCursor();
-
-            if (count($votes) > 0) {
-                $analysis .= "<ul style='margin-bottom: 20px;'>";
-                $totalVotes = 0;
-                foreach ($votes as $vote) {
-                    $candidate = $vote['candidate_name'];
-                    $count = $vote['vote_count'];
-                    $totalVotes += $count;
+            try {
+                // First check if the column exists in votes table
+                $columnCheck = $conn->query("SHOW COLUMNS FROM votes LIKE '$columnName'");
+                if ($columnCheck->rowCount() == 0) {
+                    $analysis .= "<div style='background:#e2e3e5; color:#383d41; padding:10px; margin:10px 0; border-radius:5px;'>";
+                    $analysis .= "No votes recorded for position: " . htmlspecialchars($position) . " (column '$columnName' not found)";
+                    $analysis .= "</div>";
+                    continue;
                 }
                 
-                foreach ($votes as $vote) {
-                    $candidate = $vote['candidate_name'];
-                    $count = $vote['vote_count'];
-                    $percentage = ($totalVotes > 0) ? ($count / $totalVotes) * 100 : 0;
-                    $analysis .= "<li>" . htmlspecialchars($candidate) . ": " . $count . " votes (" . number_format($percentage, 1) . "%)</li>";
+                // Query to get vote counts for this position
+                $sql = "SELECT $columnName as candidate_name, COUNT(*) as vote_count 
+                        FROM votes 
+                        WHERE election_id = ? AND $columnName IS NOT NULL AND $columnName != ''
+                        GROUP BY $columnName 
+                        ORDER BY vote_count DESC";
+                
+                $votesStmt = $conn->prepare($sql);
+                $votesStmt->execute([$electionId]);
+                $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
+                $votesStmt->closeCursor();
+
+                if (count($votes) > 0) {
+                    $analysis .= "<ul style='margin-bottom: 20px;'>";
+                    $totalVotes = 0;
+                    foreach ($votes as $vote) {
+                        $totalVotes += $vote['vote_count'];
+                    }
+                    
+                    foreach ($votes as $vote) {
+                        $candidate = $vote['candidate_name'];
+                        $count = $vote['vote_count'];
+                        $percentage = ($totalVotes > 0) ? ($count / $totalVotes) * 100 : 0;
+                        $analysis .= "<li><strong>" . htmlspecialchars($candidate) . "</strong>: " . $count . " votes (" . number_format($percentage, 1) . "%)</li>";
+                    }
+                    $analysis .= "</ul>";
+                    $analysis .= "<p><strong>Total votes for this position:</strong> " . $totalVotes . "</p>";
+                } else {
+                    $analysis .= "<div style='background:#e2e3e5; color:#383d41; padding:10px; margin:10px 0; border-radius:5px;'>";
+                    $analysis .= "No votes recorded for " . htmlspecialchars($position) . " yet.";
+                    $analysis .= "</div>";
                 }
-                $analysis .= "</ul>";
-                $analysis .= "<p><strong>Total votes for this position:</strong> " . $totalVotes . "</p>";
-            } else {
-                $analysis .= "<div style='background:#e2e3e5; color:#383d41; padding:10px; margin:10px 0; border-radius:5px;'>";
-                $analysis .= "No votes recorded for this position yet.";
+            } catch (PDOException $e) {
+                $analysis .= "<div style='background:#f8d7da; color:#721c24; padding:10px; margin:10px 0; border-radius:5px;'>";
+                $analysis .= "Error fetching votes for " . htmlspecialchars($position) . ": " . $e->getMessage();
                 $analysis .= "</div>";
             }
         }
@@ -115,16 +113,56 @@ function analyzeElectionResults($conn, $electionId) {
     }
 }
 
-// Debug: Display table structure info
-$debug = [];
-try {
-    $tables = ['elections', 'election_posts', 'votes', 'contesters'];
-    foreach ($tables as $table) {
-        $check = $conn->query("SHOW TABLES LIKE '$table'");
-        $debug[$table] = $check->rowCount() > 0;
+// Alternative approach - Get results from contesters table
+function getResultsFromContesters($conn, $electionId) {
+    try {
+        $electionTitleStmt = $conn->prepare("SELECT title FROM elections WHERE id = ?");
+        $electionTitleStmt->execute([$electionId]);
+        $electionTitle = $electionTitleStmt->fetchColumn();
+        
+        $analysis = "<h3>Election: " . htmlspecialchars($electionTitle) . " (From Candidates Table)</h3>";
+        
+        // Get all distinct posts from contesters for this election
+        $postsStmt = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
+        $postsStmt->execute([$electionId]);
+        $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($posts)) {
+            $analysis .= "<p>No candidates have applied for this election.</p>";
+            return $analysis;
+        }
+        
+        foreach ($posts as $post) {
+            $position = $post['postname'];
+            $analysis .= "<h4>Position: " . htmlspecialchars($position) . "</h4>";
+            
+            // Get candidates and their vote counts from contesters table
+            $candidatesStmt = $conn->prepare("SELECT name, votes FROM contesters WHERE election_id = ? AND postname = ? ORDER BY votes DESC");
+            $candidatesStmt->execute([$electionId, $position]);
+            $candidates = $candidatesStmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (count($candidates) > 0) {
+                $analysis .= "<ul style='margin-bottom: 20px;'>";
+                $totalVotes = 0;
+                foreach ($candidates as $candidate) {
+                    $totalVotes += $candidate['votes'];
+                }
+                
+                foreach ($candidates as $candidate) {
+                    $percentage = ($totalVotes > 0) ? ($candidate['votes'] / $totalVotes) * 100 : 0;
+                    $analysis .= "<li><strong>" . htmlspecialchars($candidate['name']) . "</strong>: " . $candidate['votes'] . " votes (" . number_format($percentage, 1) . "%)</li>";
+                }
+                $analysis .= "</ul>";
+                $analysis .= "<p><strong>Total votes for this position:</strong> " . $totalVotes . "</p>";
+            } else {
+                $analysis .= "<p>No votes recorded for this position.</p>";
+            }
+        }
+        
+        return $analysis;
+    } catch (PDOException $e) {
+        return "<p>Error: " . $e->getMessage() . "</p>";
     }
-} catch (Exception $e) {
-    $debug['error'] = $e->getMessage();
 }
 ?>
 
@@ -138,56 +176,93 @@ try {
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
         .admin-container { width: 90%; max-width: 1200px; margin: 20px auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
         h2 { color: #333; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-        h3 { color: #2c3e50; margin-top: 25px; }
-        h4 { color: #34495e; margin-top: 20px; }
+        h3 { color: #2c3e50; margin-top: 25px; border-left: 4px solid #3498db; padding-left: 15px; }
+        h4 { color: #34495e; margin-top: 20px; background: #ecf0f1; padding: 8px 12px; border-radius: 5px; }
         ul { background-color: #f9f9f9; padding: 15px 15px 15px 35px; border-radius: 5px; }
         li { margin: 8px 0; }
         .no-data { color: #999; font-style: italic; padding: 10px; text-align: center; }
-        .debug-panel { 
-            background: #2c3e50; 
-            color: #ecf0f1; 
-            padding: 15px; 
-            margin-bottom: 20px; 
-            border-radius: 5px;
-            font-family: monospace;
-            font-size: 12px;
+        .winner { 
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-weight: bold;
         }
-        .debug-panel h4 { color: #3498db; margin-top: 0; }
-        .debug-panel ul { background: none; padding: 0; margin: 0; list-style: none; }
-        .debug-panel li { margin: 5px 0; }
-        .debug-panel .good { color: #2ecc71; }
-        .debug-panel .bad { color: #e74c3c; }
         @media (max-width: 768px) { .admin-container { width: 95%; } }
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            background: #ecf0f1;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .tab-btn.active {
+            background: #3498db;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="admin-container">
         <h2>Voting Results Analysis</h2>
         
-        <!-- Debug Panel - Remove after fixing -->
-        <div class="debug-panel">
-            <h4>🔧 System Check</h4>
-            <ul>
-                <?php foreach ($debug as $table => $exists): ?>
-                    <?php if ($table != 'error'): ?>
-                        <li>Table '<?php echo $table; ?>': <?php echo $exists ? '<span class="good">✓ Exists</span>' : '<span class="bad">✗ Missing</span>'; ?></li>
-                    <?php endif; ?>
-                <?php endforeach; ?>
-                <?php if (isset($debug['error'])): ?>
-                    <li class="bad">Error: <?php echo $debug['error']; ?></li>
-                <?php endif; ?>
-            </ul>
-            <p><small>If any tables are missing, run the necessary CREATE TABLE queries.</small></p>
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="showTab('contesters')">View from Candidates</button>
+            <button class="tab-btn" onclick="showTab('votes')">View from Votes</button>
         </div>
         
-        <?php if (empty($elections)): ?>
-            <p class="no-data">No elections found. Please create an election first.</p>
-        <?php else: ?>
-            <?php foreach ($elections as $election): ?>
-                <?php echo analyzeElectionResults($conn, $election['id']); ?>
-            <?php endforeach; ?>
-        <?php endif; ?>
+        <div id="contesters-tab" class="tab-content active">
+            <?php if (empty($elections)): ?>
+                <p class="no-data">No elections found. Please create an election first.</p>
+            <?php else: ?>
+                <?php foreach ($elections as $election): ?>
+                    <?php echo getResultsFromContesters($conn, $election['id']); ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        
+        <div id="votes-tab" class="tab-content">
+            <?php if (empty($elections)): ?>
+                <p class="no-data">No elections found. Please create an election first.</p>
+            <?php else: ?>
+                <?php foreach ($elections as $election): ?>
+                    <?php echo analyzeElectionResults($conn, $election['id']); ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
     </div>
+    
+    <script>
+    function showTab(tabName) {
+        // Hide all tabs
+        document.getElementById('contesters-tab').classList.remove('active');
+        document.getElementById('votes-tab').classList.remove('active');
+        
+        // Remove active class from all buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Show selected tab
+        document.getElementById(tabName + '-tab').classList.add('active');
+        
+        // Add active class to clicked button
+        event.target.classList.add('active');
+    }
+    </script>
 </body>
 </html>
 
