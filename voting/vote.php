@@ -1,5 +1,5 @@
 <?php
-// vote.php (Full PHP Code)
+// vote.php (Full PHP Code - PDO Version)
 session_start();
 include("conn.php");
 
@@ -8,20 +8,25 @@ if (empty($_SESSION["username"])) {
     exit();
 }
 
-// Fetch Open Elections
-$openElectionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE status = active");
+// Get user ID from username
+$userStmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+$userStmt->execute([$_SESSION["username"]]);
+$user = $userStmt->fetch(PDO::FETCH_ASSOC);
+$userId = $user ? $user['id'] : null;
+
+// Fetch Open Elections (Fix: add quotes around 'active')
+$openElectionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE status = 'active'");
 $openElectionsStmt->execute();
-$openElectionsResult = $openElectionsStmt->get_result();
-$openElectionsStmt->close();
+$openElections = $openElectionsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get Election ID from URL or Session (if any)
 $electionId = isset($_GET['election_id']) ? intval($_GET['election_id']) : (isset($_SESSION['selected_election']) ? $_SESSION['selected_election'] : null);
 
 if (isset($_GET['election_id'])) {
-    $_SESSION['selected_election'] = $electionId; // Store selected election in session
+    $_SESSION['selected_election'] = $electionId;
 }
 
-$showVoteForm = false; // Flag to control form display
+$showVoteForm = false;
 $noPostsMessage = "";
 $errorMessage = "";
 $successMessage = "";
@@ -29,60 +34,42 @@ $successMessage = "";
 if ($electionId !== null) {
     // Check if Election Exists
     $electionExistsStmt = $conn->prepare("SELECT 1 FROM elections WHERE id = ?");
-    $electionExistsStmt->bind_param("i", $electionId);
-    $electionExistsStmt->execute();
-    $electionExistsStmt->store_result();
-
-    if ($electionExistsStmt->num_rows === 0) {
+    $electionExistsStmt->execute([$electionId]);
+    
+    if ($electionExistsStmt->rowCount() === 0) {
         $errorMessage = "<p style='color:red;'>The selected election does not exist.</p>";
     } else {
-        $electionExistsStmt->close();
-
-        // Check if Voting is Open
-        $votingOpenStmt = $conn->prepare("SELECT voting_open FROM elections WHERE id = ?");
-        $votingOpenStmt->bind_param("i", $electionId);
-        $votingOpenStmt->execute();
-        $votingOpenStmt->bind_result($votingOpen);
-        $votingOpenStmt->fetch();
-        $votingOpenStmt->close();
-
-        if ($votingOpen !== 1) {
-            $errorMessage = "<p style='color:red;'>Voting is currently closed for this election.</p>";
+        // Check if Voting is Open (using status column)
+        $votingOpenStmt = $conn->prepare("SELECT status FROM elections WHERE id = ?");
+        $votingOpenStmt->execute([$electionId]);
+        $electionStatus = $votingOpenStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($electionStatus['status'] !== 'active') {
+            $errorMessage = "<p style='color:red;'>Voting is currently closed for this election. Election status: " . $electionStatus['status'] . "</p>";
         } else {
-            // Check if User is Registered
-            $userRegisteredStmt = $conn->prepare("SELECT 1 FROM users WHERE username = ?");
-            $userRegisteredStmt->bind_param("s", $_SESSION["username"]);
-            $userRegisteredStmt->execute();
-            $userRegisteredStmt->store_result();
-
-            if ($userRegisteredStmt->num_rows === 0) {
-                $errorMessage = "<p style='color:red;'>You are not a registered voter.</p>";
+            // Check if User is Registered for this election
+            $userRegisteredStmt = $conn->prepare("SELECT 1 FROM user_elections WHERE user_id = ? AND election_id = ?");
+            $userRegisteredStmt->execute([$userId, $electionId]);
+            
+            if ($userRegisteredStmt->rowCount() === 0) {
+                $errorMessage = "<p style='color:red;'>You are not registered for this election.</p>";
             } else {
-                $userRegisteredStmt->close();
-
-                // Check if User Already Voted
-                $alreadyVotedStmt = $conn->prepare("SELECT 1 FROM votes WHERE username = ? AND election_id = ?");
-                $alreadyVotedStmt->bind_param("si", $_SESSION["username"], $electionId);
-                $alreadyVotedStmt->execute();
-                $alreadyVotedStmt->store_result();
-
-                if ($alreadyVotedStmt->num_rows > 0) {
+                // Check if User Already Voted (using new votes table structure)
+                $alreadyVotedStmt = $conn->prepare("SELECT 1 FROM votes WHERE user_id = ? AND election_id = ?");
+                $alreadyVotedStmt->execute([$userId, $electionId]);
+                
+                if ($alreadyVotedStmt->rowCount() > 0) {
                     $errorMessage = "<p style='color:red;'>You have already voted in this election.</p>";
                 } else {
-                    $alreadyVotedStmt->close();
-
-                    // Check if there are any posts for the election
-                    $postCheckStmt = $conn->prepare("SELECT COUNT(*) FROM contesters WHERE election_id = ?");
-                    $postCheckStmt->bind_param("i", $electionId);
-                    $postCheckStmt->execute();
-                    $postCheckStmt->bind_result($postCount);
-                    $postCheckStmt->fetch();
-                    $postCheckStmt->close();
-
-                    if ($postCount === 0) {
-                        $noPostsMessage = "<p style='color:red;'>There are no posts available for this election.</p>";
+                    // Check if there are any posts/candidates for the election
+                    $postCheckStmt = $conn->prepare("SELECT COUNT(*) as count FROM contesters WHERE election_id = ?");
+                    $postCheckStmt->execute([$electionId]);
+                    $postCount = $postCheckStmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($postCount['count'] === 0) {
+                        $noPostsMessage = "<p style='color:red;'>There are no candidates available for this election.</p>";
                     } else {
-                        $showVoteForm = true; // Show the form
+                        $showVoteForm = true;
                     }
                 }
             }
@@ -91,60 +78,51 @@ if ($electionId !== null) {
 }
 
 // Handle Form Submission
-if ($_SERVER["REQUEST_METHOD"] === "POST" && $showVoteForm) {
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVoteForm) {
     $votes = $_POST;
-    unset($votes['submit']); // Remove the submit button value
-
-    // Check if all posts were voted for
+    unset($votes['submit']);
+    
+    // Get all posts for this election
     $postStmt = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ?");
-    $postStmt->bind_param("i", $electionId);
-    $postStmt->execute();
-    $postResult = $postStmt->get_result();
-
+    $postStmt->execute([$electionId]);
+    $posts = $postStmt->fetchAll(PDO::FETCH_ASSOC);
+    
     $allPostsVoted = true;
-    while ($postRow = $postResult->fetch_assoc()) {
-        $postName = strtolower(str_replace(' ', '_', $postRow['postname']));
+    foreach ($posts as $post) {
+        $postName = strtolower(str_replace(' ', '_', $post['postname']));
         if (!isset($votes[$postName]) || empty($votes[$postName])) {
             $allPostsVoted = false;
-            $errorMessage = "<p style='color:red;'>Please vote for all available posts.</p>";
+            $errorMessage = "<p style='color:red;'>Please vote for all available positions: " . htmlspecialchars($post['postname']) . "</p>";
             break;
         }
     }
-    $postStmt->close();
-
+    
     if ($allPostsVoted) {
         $voteSuccess = true;
-        foreach ($votes as $postName => $candidateName) {
-            $voteStmt = $conn->prepare("INSERT INTO votes (username, election_id, postname, candidate_name) VALUES (?, ?, ?, ?)");
-            $replacedPostName = str_replace('_', ' ', $postName);
-            $voteStmt->bind_param("siss", $_SESSION["username"], $electionId, $replacedPostName, $candidateName);
-
-            if ($voteStmt->execute()) {
-                $voteStmt->close();
-
+        
+        foreach ($votes as $postNameKey => $candidateName) {
+            $originalPostName = str_replace('_', ' ', $postNameKey);
+            
+            // Insert vote into votes table
+            $voteStmt = $conn->prepare("INSERT INTO votes (user_id, election_id, postname, candidate_name) VALUES (?, ?, ?, ?)");
+            if ($voteStmt->execute([$userId, $electionId, $originalPostName, $candidateName])) {
+                // Update vote count in contesters table
                 $updateStmt = $conn->prepare("UPDATE contesters SET votes = votes + 1 WHERE name = ? AND election_id = ? AND postname = ?");
-                $updateStmt->bind_param("sis", $candidateName, $electionId, $replacedPostName);
-
-                if ($updateStmt->execute()) {
-                    $updateStmt->close();
-                } else {
-                    error_log("Update contesters failed: " . $updateStmt->error);
+                if (!$updateStmt->execute([$candidateName, $electionId, $originalPostName])) {
                     $voteSuccess = false;
-                    $updateStmt->close();
+                    $errorMessage = "<p style='color:red;'>Error updating vote counts.</p>";
                     break;
                 }
             } else {
-                error_log("Vote insertion failed: " . $voteStmt->error);
                 $voteSuccess = false;
-                $voteStmt->close();
+                $errorMessage = "<p style='color:red;'>Error submitting your vote. Please try again.</p>";
                 break;
             }
         }
-
+        
         if ($voteSuccess) {
-            $successMessage = "<p style='color:green;'>Vote submitted successfully!</p>";
-        } else {
-            $errorMessage = "<p style='color:red;'>Error submitting vote. Please try again.</p>";
+            $successMessage = "<p style='color:green;'>✓ Vote submitted successfully! Thank you for voting.</p>";
+            $showVoteForm = false; // Hide form after successful vote
         }
     }
 }
@@ -155,11 +133,163 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $showVoteForm) {
     <meta charset="UTF-8">
     <title>OVMS | Vote</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="An online Voting Management System.">
-    <meta name="keywords" content="portfolio, projects, web development, design">
-    <meta name="author" content="Jacob witty">
-    <link rel="icon" href="logo.jpg" type="image/x-icon">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar .title h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        
+        .navbar .links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .navbar a:hover {
+            background-color: rgba(255,255,255,0.2);
+        }
+        
+        .vote-container {
+            width: 90%;
+            max-width: 700px;
+            margin: 40px auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .vote-container h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        select, input[type="submit"] {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .vote-form label {
+            display: block;
+            margin-top: 15px;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="submit"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        
+        input[type="submit"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+        
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #dc3545;
+        }
+        
+        footer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 0;
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+        }
+        
+        footer ul {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            list-style: none;
+            padding: 0;
+            margin: 0 0 10px 0;
+        }
+        
+        footer li {
+            margin: 0 15px;
+        }
+        
+        footer a {
+            text-decoration: none;
+            color: white;
+            font-size: 1em;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            .navbar {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            .vote-container {
+                width: 95%;
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
     <header>
@@ -181,182 +311,85 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $showVoteForm) {
     </header>
 
     <div class="vote-container">
-        <h2>Select an Election to Vote</h2>
+        <h2>🗳️ Cast Your Vote</h2>
+        
+        <label for="electionSelect">Select an Election:</label>
         <select id="electionSelect" onchange="window.location.href='vote.php?election_id=' + this.value;">
-            <option value="">Select Election</option>
-            <?php
-            while ($row = $openElectionsResult->fetch_assoc()) {
-                echo "<option value='" . $row['id'] . "'" . ($electionId == $row['id'] ? ' selected' : '') . ">" . $row['title'] . "</option>";
-            }
-            ?>
+            <option value="">-- Select Election --</option>
+            <?php foreach ($openElections as $election): ?>
+                <option value="<?php echo $election['id']; ?>" <?php echo ($electionId == $election['id']) ? 'selected' : ''; ?>>
+                    <?php echo htmlspecialchars($election['title']); ?>
+                </option>
+            <?php endforeach; ?>
         </select>
 
         <?php if (!empty($errorMessage)): ?>
-            <?php echo $errorMessage; ?>
+            <div class="error-message"><?php echo $errorMessage; ?></div>
         <?php endif; ?>
 
         <?php if (!empty($noPostsMessage)): ?>
-            <?php echo $noPostsMessage; ?>
+            <div class="error-message"><?php echo $noPostsMessage; ?></div>
         <?php endif; ?>
 
         <?php if (!empty($successMessage)): ?>
-            <?php echo $successMessage; ?>
+            <div class="success-message"><?php echo $successMessage; ?></div>
         <?php endif; ?>
 
-        <?php if ($showVoteForm): ?>
+        <?php if ($showVoteForm && $electionId): ?>
             <form method="post" action="vote.php?election_id=<?php echo $electionId; ?>" class="vote-form">
-                <center><h1 style="color:grey">Vote for Your Favorite Option</h1></center>
+                <h3 style="color: #667eea; text-align: center;">Election ID: <?php echo $electionId; ?></h3>
+                <p style="text-align: center; color: #666;">Please select your preferred candidate for each position</p>
+                
                 <?php
                 // Fetch Posts and Candidates Dynamically
-                $postStmt = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ?");
-                $postStmt->bind_param("i", $electionId);
-                $postStmt->execute();
-                $postResult = $postStmt->get_result();
-
-                if ($postResult->num_rows > 0) {
-                    while ($postRow = $postResult->fetch_assoc()) {
-                        $postName = $postRow['postname'];
-                        $candidateStmt = $conn->prepare("SELECT name FROM contesters WHERE postname = ? AND election_id = ?");
-                        $candidateStmt->bind_param("si", $postName, $electionId);
-                        $candidateStmt->execute();
-                        $candidateResult = $candidateStmt->get_result();
-
-                        echo "<label style='color:black' for='" . strtolower(str_replace(' ', '_', $postName)) . "'>" . $postName . "</label>";
-                        echo "<select name='" . strtolower(str_replace(' ', '_', $postName)) . "' id='" . strtolower(str_replace(' ', '_', $postName)) . "'>";
-                        echo "<option value=''>Select</option>";
-                        while ($row = $candidateResult->fetch_assoc()) {
-                            echo "<option value='" . $row['name'] . "'>" . $row['name'] . "</option>";
+                $postStmt = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
+                $postStmt->execute([$electionId]);
+                $posts = $postStmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (count($posts) > 0) {
+                    foreach ($posts as $post) {
+                        $postName = $post['postname'];
+                        $postKey = strtolower(str_replace(' ', '_', $postName));
+                        
+                        $candidateStmt = $conn->prepare("SELECT name FROM contesters WHERE postname = ? AND election_id = ? ORDER BY name");
+                        $candidateStmt->execute([$postName, $electionId]);
+                        $candidates = $candidateStmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        echo "<label for='$postKey'><strong>" . htmlspecialchars($postName) . "</strong></label>";
+                        echo "<select name='$postKey' id='$postKey' required>";
+                        echo "<option value=''>-- Select Candidate --</option>";
+                        foreach ($candidates as $candidate) {
+                            echo "<option value='" . htmlspecialchars($candidate['name']) . "'>" . htmlspecialchars($candidate['name']) . "</option>";
                         }
                         echo "</select>";
-                        $candidateStmt->close();
                     }
                 } else {
-                    echo "<p>No posts available for this election.</p>";
+                    echo "<p style='color:red;'>No candidates available for this election.</p>";
                 }
-                $postStmt->close();
                 ?>
-                <center>
-                    <input type="submit" name="submit" value="Vote">
-                </center>
+                
+                <input type="submit" name="submit" value="Submit Vote">
             </form>
         <?php endif; ?>
+        
+        <?php if (!$electionId && empty($openElections)): ?>
+            <div class="error-message">No active elections available at this time.</div>
+        <?php endif; ?>
     </div>
+    
     <footer>
-    <div>
-        <h2>Faster Links</h2>
-        <ul>
-            <li><a href="index.php">Home</a></li>
-            <li><a href="vote.php">Vote</a></li>
-            <li><a href="profile.php">Profile</a></li>
-            <li><a href="logout.php">Log out</a></li>
-        </ul>
-    </div>
-    <div style="text-align: center; padding: 10px; background-color: #f0f0f0; font-size: 0.8em; color: #555; margin-top: 20px;">
-        &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
-    </div>
-</footer>
-
+        <div>
+            <h3>Faster Links</h3>
+            <ul>
+                <li><a href="index.php">Home</a></li>
+                <li><a href="vote.php">Vote</a></li>
+                <li><a href="profile.php">Profile</a></li>
+                <li><a href="logout.php">Log out</a></li>
+            </ul>
+        </div>
+        <div>
+            &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
+        </div>
+    </footer>
 </body>
 </html>
-<style>
-/* style.css (CSS Styles) */
-
-body {
-    font-family: sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f4f4f4;
-}
-
-.navbar {
-    background-color: #3498db;
-    color: white;
-    padding: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.navbar a {
-    color: white;
-    text-decoration: none;
-    margin: 0 10px;
-}
-
-.vote-container {
-    width: 80%;
-    max-width: 600px;
-    margin: 20px auto;
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-select, input[type="submit"] {
-    width: 100%;
-    padding: 10px;
-    margin: 10px 0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    box-sizing: border-box;
-}
-
-input[type="submit"] {
-    background-color: #2ecc71;
-    color: white;
-    cursor: pointer;
-}
-
-input[type="submit"]:hover {
-    background-color: #27ae60;
-}
-
-h2, h3 {
-    color: #333;
-    margin-bottom: 10px;
-}
-
-p {
-    color: #555;
-}
-
-@media (max-width: 768px) {
-    .vote-container {
-        width: 95%;
-    }
-}
-
-/* Footer Styles */
-footer {
-    background-color: #708896;
-    padding: 20px 0;
-    text-align: center;
-    color:white;
-}
-
-footer ul {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    list-style: none;
-    padding:0;
-}
-
-footer li {
-    margin: 0 10px;
-}
-
-footer a {
-    text-decoration: none;
-    color: #fff;
-    font-size: 1em;
-}
-
-footer div:last-child{
-    background-color: rgba(0,0,0,0.2);
-    margin-top:20px;
-    padding:10px;
-    font-size:0.8em;
-}
-</style>
