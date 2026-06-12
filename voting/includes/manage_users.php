@@ -1,226 +1,630 @@
 <?php
-include("conn.php"); // Ensure database connection is included
+session_start();
+include("conn.php");
 
-// Ensure $users is always initialized
+// Admin Authentication (optional - remove if not needed)
+if (!isset($_SESSION['admin_id']) && !isset($_SESSION['username'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// Fetch all users from the database
 $users = [];
+$errorMessage = "";
 
 try {
-    // Fetch users from the database
-    $stmt = $conn->prepare("SELECT id,full_name, username, email FROM users");
-    if (!$stmt) {
-        throw new Exception("Prepare failed: " . $conn->error);
-    }
-
+    $stmt = $conn->prepare("SELECT id, username, name as full_name, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users ORDER BY id");
     $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        $users = $result->fetch_all(MYSQLI_ASSOC);
-    }
-
-    $stmt->close();
-} catch (Exception $e) {
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
     error_log("Error fetching users: " . $e->getMessage());
+    $errorMessage = "Error loading users. Please try again later.";
 }
 ?>
 
-<h2>Manage Users</h2>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Manage Users | Voting System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-<?php if (empty($users)): ?>
-    <p style="color: red;">No users found.</p>
-<?php else: ?>
-    <table>
-        <thead>
-            <tr>
-            <th>No.</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($users as $user): ?>
-                <tr>
-                 <td><?php echo htmlspecialchars($user['id']); ?></td>
-                    <td><?php echo htmlspecialchars($user['username']); ?></td>
-                    <td><?php echo htmlspecialchars($user['email']); ?></td>
-                    <td>
-                        <button onclick="showUserInfo(<?php echo $user['id']; ?>)">View Info</button>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-<?php endif; ?>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-<div class="modal" id="user-info-modal">
-    <div class="modal-content">
-        <span class="close" onclick="hideUserInfo()">&times;</span>
-        <h4 id="modal-title">User Info</h4>
-        <div id="modal-content"></div>
-    </div>
-</div>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
 
-<script>
-function showUserInfo(userId) {
-    var modal = document.getElementById('user-info-modal');
-    var contentDiv = document.getElementById('modal-content');
-    var title = document.getElementById('modal-title');
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px 30px;
+        }
 
-    fetch('get_user_info.php?id=' + userId)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                contentDiv.innerHTML = `<p style="color:red;">${data.error}</p>`;
-            } else {
-                let registrations = data.registrations.length > 0 ? data.registrations.map(reg => `<li>${reg}</li>`).join('') : "<li>No registrations.</li>";
-                let votes = data.votes.length > 0 ? data.votes.map(vote => `<li>${vote.title} (${vote.date})</li>`).join('') : "<li>No votes.</li>";
-                let contests = data.contests.length > 0 ? data.contests.map(contest => `<li>${contest.postname} (${contest.election})</li>`).join('') : "<li>No contests.</li>";
+        .header h2 {
+            margin: 0;
+            font-size: 28px;
+        }
 
-                // Add profile photo to the top of the modal
-                let profilePhotoHtml = '';
-                if (data.profile_photo && data.profile_photo !== '') { // Check if profile_photo exists and is not empty
-                    profilePhotoHtml = `<img src="uploads/${data.profile_photo}" alt="Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 10px;">`;
-                } else {
-                    profilePhotoHtml = `<img src="faces/default.jpg" alt="Default Profile Photo" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 10px;">`;
-                }
+        .header p {
+            margin: 8px 0 0;
+            opacity: 0.9;
+        }
 
-                contentDiv.innerHTML = `
-                    ${profilePhotoHtml}
-                    <p><strong>Username:</strong> ${data.username}</p>
-                    <p><strong>Full Name:</strong> ${data.fullname}</p>
-                    <p><strong>Email:</strong> ${data.email}</p>
-                    <p><strong>Registrations:</strong></p>
-                    <ul>${registrations}</ul>
-                    <p><strong>Votes:</strong></p>
-                    <ul>${votes}</ul>
-                    <p><strong>Contests:</strong></p>
-                    <ul>${contests}</ul>
-                `;
+        .content {
+            padding: 30px;
+        }
+
+        /* Table Styles */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .view-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .view-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 3% auto;
+            padding: 0;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 550px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s;
+            overflow: hidden;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
             }
-            modal.style.display = 'block';
-            title.textContent = "User Info for User ID: " + userId;
-        })
-        .catch(error => {
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h4 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            line-height: 20px;
+        }
+
+        .close:hover {
+            opacity: 0.8;
+        }
+
+        .modal-body {
+            padding: 25px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .profile-photo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .profile-photo img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 4px solid #667eea;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-section {
+            margin-bottom: 18px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .info-section:last-child {
+            border-bottom: none;
+        }
+
+        .info-section strong {
+            color: #667eea;
+            display: inline-block;
+            min-width: 140px;
+            font-size: 14px;
+        }
+
+        .info-list {
+            margin: 8px 0 0 20px;
+            padding-left: 20px;
+        }
+
+        .info-list li {
+            margin: 6px 0;
+            color: #555;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #999;
+        }
+
+        .empty-state p {
+            margin-top: 10px;
+        }
+
+        @media screen and (max-width: 768px) {
+            .content {
+                padding: 15px;
+            }
+            
+            th, td {
+                padding: 10px 12px;
+            }
+            
+            .info-section strong {
+                display: block;
+                margin-bottom: 5px;
+                min-width: auto;
+            }
+            
+            .info-list {
+                margin-left: 15px;
+            }
+            
+            .modal-content {
+                margin: 10% auto;
+                width: 95%;
+            }
+            
+            .modal-header h4 {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📋 Manage Users</h2>
+            <p>View and manage all registered users in the system</p>
+        </div>
+        
+        <div class="content">
+            <?php if ($errorMessage): ?>
+                <div class="error-message">
+                    <?php echo htmlspecialchars($errorMessage); ?>
+                </div>
+            <?php elseif (empty($users)): ?>
+                <div class="empty-state">
+                    <div style="font-size: 48px;">👥</div>
+                    <p>No users found in the database.</p>
+                </div>
+            <?php else: ?>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Full Name</th>
+                                <th>Email</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($users as $user): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($user['id']); ?></td>
+                                    <td><?php echo htmlspecialchars($user['username']); ?></td>
+                                    <td><?php echo htmlspecialchars($user['full_name'] ?? 'N/A'); ?></td>
+                                    <td><?php echo htmlspecialchars($user['email']); ?></td>
+                                    <td><?php echo $user['registered_date'] ? date('M d, Y', strtotime($user['registered_date'])) : 'N/A'; ?></td>
+                                    <td>
+                                        <button class="view-btn" onclick="showUserInfo(<?php echo $user['id']; ?>)">
+                                            👤 View Details
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- User Info Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 id="modalTitle">User Information</h4>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading user information...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Store user data cache to avoid multiple requests
+    const userCache = {};
+    
+    async function showUserInfo(userId) {
+        const modal = document.getElementById('userModal');
+        const modalBody = document.getElementById('modalBody');
+        const modalTitle = document.getElementById('modalTitle');
+        
+        // Show modal with loading state
+        modal.style.display = 'block';
+        modalBody.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading user information...
+            </div>
+        `;
+        modalTitle.textContent = `User Information - ID: ${userId}`;
+        
+        // Check cache first
+        if (userCache[userId]) {
+            displayUserInfo(userCache[userId]);
+            return;
+        }
+        
+        try {
+            // Fetch user data using the current file with AJAX
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=get_user&user_id=' + userId
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                modalBody.innerHTML = `<div class="error-message">❌ ${data.error}</div>`;
+            } else {
+                userCache[userId] = data;
+                displayUserInfo(data);
+            }
+        } catch (error) {
             console.error('Error fetching user info:', error);
-            contentDiv.innerHTML = "<p style='color:red;'>Failed to load user info.</p>";
-        });
-}
-function hideUserInfo() {
-    document.getElementById('user-info-modal').style.display = 'none';
-}
-</script>
-<style>
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.5);
-}
-
-.modal-content {
-    background-color: white;
-    margin: 15% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    width: 50%;
-}
-
-.close {
-    color: red;
-    float: right;
-    font-size: 28px;
-    font-weight: bold;
-}
-
-.close:hover,
-close:focus {
-    color: black;
-    text-decoration: none;
-    cursor: pointer;
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-    font-family: Arial, sans-serif;
-    border: 1px solid #ddd; /* Light border around the table */
-}
-
-th, td {
-    border: 1px solid #ddd; /* Light borders for cells */
-    padding: 12px 15px;
-    text-align: left;
-}
-
-th {
-    background-color: #f2f2f2; /* Light gray background for headers */
-    font-weight: bold;
-    color: #333; /* Darker text for headers */
-}
-
-tr:nth-child(even) {
-    background-color: #f9f9f9; /* Slightly different background for even rows */
-}
-
-tr:hover {
-    background-color: #e0f7fa; /* Light blue on hover */
-}
-
-/* Optional: Style for the "Actions" column buttons */
-td button {
-    background-color: #4CAF50; /* Green background */
-    border: none;
-    color: white;
-    padding: 8px 16px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    font-size: 14px;
-    margin: 4px 2px;
-    cursor: pointer;
-    border-radius: 4px; /* Rounded corners for buttons */
-}
-
-td button:hover {
-    background-color: #3e8e41; /* Darker green on hover */
-}
-
-/* Optional: Responsive table styling */
-@media screen and (max-width: 600px) {
-    table, thead, tbody, th, td, tr {
-        display: block;
+            modalBody.innerHTML = `<div class="error-message">❌ Failed to load user information. Please try again.</div>`;
+        }
     }
-
-    thead tr {
-        position: absolute;
-        top: -9999px;
-        left: -9999px;
+    
+    function displayUserInfo(data) {
+        const modalBody = document.getElementById('modalBody');
+        
+        // Handle profile photo
+        let profilePhotoHtml = '';
+        if (data.profile_photo && data.profile_photo.startsWith('data:image')) {
+            profilePhotoHtml = `<img src="${data.profile_photo}" alt="Profile Photo">`;
+        } else if (data.profile_photo && data.profile_photo !== '') {
+            profilePhotoHtml = `<img src="uploads/${data.profile_photo}" alt="Profile Photo" onerror="this.src='faces/default.jpg'">`;
+        } else if (data.profile_photo_blob) {
+            profilePhotoHtml = `<img src="data:image/${data.profile_photo_type};base64,${data.profile_photo_blob}" alt="Profile Photo">`;
+        } else {
+            profilePhotoHtml = `<img src="faces/default.jpg" alt="Default Profile Photo">`;
+        }
+        
+        // Format registrations
+        let registrationsHtml = '';
+        if (data.registrations && data.registrations.length > 0) {
+            registrationsHtml = '<ul class="info-list">';
+            data.registrations.forEach(reg => {
+                registrationsHtml += `<li>📌 ${escapeHtml(reg)}</li>`;
+            });
+            registrationsHtml += '</ul>';
+        } else {
+            registrationsHtml = '<p style="color:#999; margin:5px 0 0 20px;">No election registrations</p>';
+        }
+        
+        // Format votes
+        let votesHtml = '';
+        if (data.votes && data.votes.length > 0) {
+            votesHtml = '<ul class="info-list">';
+            data.votes.forEach(vote => {
+                votesHtml += `<li>🗳️ ${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
+            });
+            votesHtml += '</ul>';
+        } else {
+            votesHtml = '<p style="color:#999; margin:5px 0 0 20px;">No votes cast</p>';
+        }
+        
+        // Format contests
+        let contestsHtml = '';
+        if (data.contests && data.contests.length > 0) {
+            contestsHtml = '<ul class="info-list">';
+            data.contests.forEach(contest => {
+                contestsHtml += `<li>🏆 ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
+            });
+            contestsHtml += '</ul>';
+        } else {
+            contestsHtml = '<p style="color:#999; margin:5px 0 0 20px;">Not contesting any position</p>';
+        }
+        
+        modalBody.innerHTML = `
+            <div class="profile-photo">
+                ${profilePhotoHtml}
+            </div>
+            <div class="info-section">
+                <strong>👤 Username:</strong> ${escapeHtml(data.username)}
+            </div>
+            <div class="info-section">
+                <strong>📛 Full Name:</strong> ${escapeHtml(data.fullname)}
+            </div>
+            <div class="info-section">
+                <strong>📧 Email:</strong> ${escapeHtml(data.email)}
+            </div>
+            <div class="info-section">
+                <strong>📅 Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+            </div>
+            <div class="info-section">
+                <strong>🗳️ Election Registrations:</strong>
+                ${registrationsHtml}
+            </div>
+            <div class="info-section">
+                <strong>✅ Votes Cast:</strong>
+                ${votesHtml}
+            </div>
+            <div class="info-section">
+                <strong>🏆 Contesting For:</strong>
+                ${contestsHtml}
+            </div>
+        `;
     }
-
-    tr { border: 1px solid #ccc; }
-
-    td {
-        border: none;
-        border-bottom: 1px solid #eee;
-        position: relative;
-        padding-left: 50%;
+    
+    function closeModal() {
+        document.getElementById('userModal').style.display = 'none';
     }
-
-    td:before {
-        position: absolute;
-        top: 6px;
-        left: 6px;
-        width: 45%;
-        padding-right: 10px;
-        white-space: nowrap;
-        content: attr(data-label);
-        font-weight: bold;
+    
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
     }
+    
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('userModal');
+        if (event.target === modal) {
+            closeModal();
+        }
+    }
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeModal();
+        }
+    });
+    </script>
+</body>
+</html>
+
+<?php
+// Handle AJAX request for user info
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
+    header('Content-Type: application/json');
+    
+    $userId = isset($_POST['user_id']) ? intval($_POST['user_id']) : 0;
+    
+    if ($userId <= 0) {
+        echo json_encode(['error' => 'Invalid user ID']);
+        exit();
+    }
+    
+    try {
+        // Fetch user basic info
+        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
+        $userStmt->execute([$userId]);
+        $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            echo json_encode(['error' => 'User not found']);
+            exit();
+        }
+        
+        // Fetch user's election registrations
+        $regStmt = $conn->prepare("SELECT e.title FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
+        $regStmt->execute([$userId]);
+        $registrations = $regStmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Fetch user's votes
+        $votesStmt = $conn->prepare("SELECT e.title, DATE(v.voted_at) as date FROM votes v JOIN elections e ON v.election_id = e.id WHERE v.user_id = ? ORDER BY v.voted_at DESC");
+        $votesStmt->execute([$userId]);
+        $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Fetch user's contest applications
+        $contestsStmt = $conn->prepare("SELECT c.postname, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
+        $contestsStmt->execute([$userId]);
+        $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Prepare profile photo (convert BLOB to base64 if needed)
+        $profilePhoto = null;
+        $profilePhotoBlob = null;
+        $profilePhotoType = null;
+        
+        if (!empty($user['profile_photo_blob'])) {
+            $profilePhotoBlob = base64_encode($user['profile_photo_blob']);
+            $profilePhotoType = $user['profile_photo_type'];
+        } elseif (!empty($user['profile_photo'])) {
+            $profilePhoto = $user['profile_photo'];
+        }
+        
+        echo json_encode([
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'fullname' => $user['fullname'] ?? 'N/A',
+            'email' => $user['email'],
+            'profile_photo' => $profilePhoto,
+            'profile_photo_blob' => $profilePhotoBlob,
+            'profile_photo_type' => $profilePhotoType,
+            'registered_date' => $user['registered_date'],
+            'registrations' => $registrations,
+            'votes' => $votes,
+            'contests' => $contests
+        ]);
+        
+    } catch (PDOException $e) {
+        error_log("Error fetching user info: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error occurred']);
+    }
+    exit();
 }
-</style>
+?>
