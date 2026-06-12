@@ -1,5 +1,4 @@
 <?php
-session_start();
 include("conn.php");
 
 // Admin Authentication (optional - remove if not needed)
