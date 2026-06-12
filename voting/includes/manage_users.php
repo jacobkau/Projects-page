@@ -1,13 +1,14 @@
 <?php
+session_start();
 include("conn.php");
 
-// Admin Authentication 
+// Admin Authentication (optional - remove if not needed)
 if (!isset($_SESSION['admin_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
-// Handle AJAX request for user info
+// Handle AJAX request for user info - MUST be at the top and exit properly
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
     header('Content-Type: application/json');
     
@@ -122,7 +123,35 @@ try {
     <meta charset="UTF-8">
     <title>Manage Users | Voting System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
+    <style>     
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            color: black;
+            background: #333;
+        }
+
+        .header h2 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 10px 0 0;
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .container {
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
         .content {
             padding: 30px;
         }
@@ -145,8 +174,7 @@ try {
         }
 
         th {
-            
-            background: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             font-weight: 600;
             font-size: 14px;
@@ -371,7 +399,7 @@ try {
 </head>
 <body>
     <div class="header">
-        <h2> Manage Users</h2>
+        <h2>Manage Users</h2>
         <p>View and manage all registered users in the system</p>
     </div>
     
@@ -409,7 +437,7 @@ try {
                                     <td><?php echo $user['registered_date'] ? date('M d, Y', strtotime($user['registered_date'])) : 'N/A'; ?></td>
                                     <td>
                                         <button class="view-btn" onclick="showUserInfo(<?php echo $user['id']; ?>)">
-                                            👤 View Details
+                                            View Details
                                         </button>
                                     </td>
                                 </tr>
@@ -523,7 +551,7 @@ try {
         if (data.votes && data.votes.length > 0) {
             votesHtml = '<ul class="info-list">';
             data.votes.forEach(vote => {
-                votesHtml += `<li> ${escapeHtml(vote.title)} - ${escapeHtml(vote.postname)}${vote.voted_at ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.voted_at)})</span>` : ''}</li>`;
+                votesHtml += `<li>${escapeHtml(vote.title)} - ${escapeHtml(vote.postname)}${vote.voted_at ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.voted_at)})</span>` : ''}</li>`;
             });
             votesHtml += '</ul>';
         } else {
@@ -547,19 +575,19 @@ try {
                 ${profilePhotoHtml}
             </div>
             <div class="info-section">
-                <strong>Username:</strong> ${escapeHtml(data.username)}
+                <strong> Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
                 <strong>Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
-                <strong>Email:</strong> ${escapeHtml(data.email)}
+                <strong> Email:</strong> ${escapeHtml(data.email)}
             </div>
             <div class="info-section">
-                <strong>Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+                <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
-                <strong>Election Registrations:</strong>
+                <strong> Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
@@ -567,7 +595,7 @@ try {
                 ${votesHtml}
             </div>
             <div class="info-section">
-                <strong>Contesting For:</strong>
+                <strong> Contesting For:</strong>
                 ${contestsHtml}
             </div>
         `;
