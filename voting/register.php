@@ -81,7 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $insertUserStmt->closeCursor();
 
         // Insert user's election registrations
-        $insertElectionStmt = $conn->prepare("INSERT IGNORE INTO user_elections (user_id, election_id) VALUES (?, ?)");
+        $insertElectionStmt = $conn->prepare("INSERT IGNORE INTO elections (user_id, election_id) VALUES (?, ?)");
         
         foreach ($selectedElections as $electionId) {
             $insertElectionStmt->execute([$userId, $electionId]);
