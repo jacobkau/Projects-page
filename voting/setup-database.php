@@ -5,23 +5,19 @@ include 'conn.php'; // Pulls your working Aiven connection
 try {
     // We combine all your SQL commands into one big string blocks
     $sqlCommands = "
-CREATE TABLE IF NOT EXISTS elections (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    start_date DATETIME,
-    end_date DATETIME,
-    status ENUM('upcoming', 'active', 'completed') DEFAULT 'upcoming',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS election_types (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    type_name VARCHAR(100) NOT NULL,
-    voting_enabled BOOLEAN DEFAULT TRUE,
-    registration_enabled BOOLEAN DEFAULT TRUE,
-    results_visible BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+ALTER TABLE contesters 
+ADD COLUMN user_id INT AFTER id,
+ADD COLUMN election_id INT AFTER user_id,
+ADD COLUMN profile_photo VARCHAR(255) AFTER name,
+ADD COLUMN votes INT DEFAULT 0 AFTER profile_photo,
+ADD COLUMN bio TEXT AFTER votes,
+MODIFY COLUMN postname VARCHAR(100) NOT NULL,
+MODIFY COLUMN name VARCHAR(255) NOT NULL;
+
+-- Add foreign key constraints
+ALTER TABLE contesters 
+ADD FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+ADD FOREIGN KEY (election_id) REFERENCES elections(id) ON DELETE CASCADE;
 
     ";
 
