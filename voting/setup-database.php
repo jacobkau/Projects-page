@@ -5,13 +5,12 @@ include 'conn.php'; // Pulls your working Aiven connection
 try {
     // We combine all your SQL commands into one big string blocks
     $sqlCommands = "
-CREATE TABLE IF NOT EXISTS user_elections (
+CREATE TABLE IF NOT EXISTS election_posts (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
     election_id INT NOT NULL,
-    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_registration (user_id, election_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    postname VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_election_post (election_id, postname),
     FOREIGN KEY (election_id) REFERENCES elections(id) ON DELETE CASCADE
 );
 
@@ -23,7 +22,7 @@ CREATE TABLE IF NOT EXISTS user_elections (
     echo "<div style='font-family: Arial; padding: 40px; text-align: center;'>";
     echo "<h2 style='color: green;'>🎉 Database Tables Built Successfully!</h2>";
     echo "<p>The following table is now live in Aiven:</p>";
-    echo "<b>•User_ election </b><br><br>";
+    echo "<b>• election_posts </b><br><br>";
     echo "<p style='color:red;'>⚠️ For security, please delete setup-database.php or remove it from GitHub now.</p>";
     echo "</div>";
 
