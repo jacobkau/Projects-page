@@ -1,4 +1,5 @@
 <?php
+session_start(); // Add this at the very beginning
 include("conn.php");
 
 // Admin Authentication (optional - remove if not needed)
@@ -19,9 +20,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     }
     
     try {
-        // 1. Fetch user basic info using safe named place markers
-        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = :id");
-        $userStmt->execute([':id' => $userId]);
+        // 1. Fetch user basic info using ? placeholders (more compatible)
+        $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
+        $userStmt->execute([$userId]);
         $user = $userStmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$user) {
@@ -29,31 +30,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             exit();
         }
         
-        // 2. Fallback empty arrays for mismatched tracking systems
+        // 2. Fetch user's election registrations
         $registrations = [];
-        $contests = [];
-        
-        // Try/Catch blocks ensure if separate plugin tables are missing, the modal STILL opens
         try {
-            $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = :id");
-            $regStmt->execute([':id' => $userId]);
+            $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
+            $regStmt->execute([$userId]);
             $registrations = $regStmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) { $registrations = []; }
+        } catch (Exception $e) { 
+            error_log("Registrations error: " . $e->getMessage());
+            $registrations = []; 
+        }
 
-        // 3. Adjusted Votes query to match your actual schema (selecting choices instead of election_id join)
+        // 3. Fetch user's votes
+        $votes = [];
         try {
-            $votesStmt = $conn->prepare("SELECT id, chairperson, vicechairperson, secretary, date FROM votes WHERE username = :username ORDER BY date DESC");
-            $votesStmt->execute([':username' => $user['username']]);
+            $votesStmt = $conn->prepare("SELECT election_id, postname, candidate_name, voted_at FROM votes WHERE user_id = ? ORDER BY voted_at DESC");
+            $votesStmt->execute([$userId]);
             $votes = $votesStmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) { $votes = []; }
+            
+            // Get election titles for votes
+            foreach ($votes as &$vote) {
+                $electionStmt = $conn->prepare("SELECT title FROM elections WHERE id = ?");
+                $electionStmt->execute([$vote['election_id']]);
+                $election = $electionStmt->fetch(PDO::FETCH_ASSOC);
+                $vote['title'] = $election['title'] ?? 'Unknown Election';
+            }
+        } catch (Exception $e) { 
+            error_log("Votes error: " . $e->getMessage());
+            $votes = []; 
+        }
         
+        // 4. Fetch user's contest applications
+        $contests = [];
         try {
-            $contestsStmt = $conn->prepare("SELECT postname, name FROM contesters WHERE name = :name");
-            $contestsStmt->execute([':name' => $user['fullname']]);
+            $contestsStmt = $conn->prepare("SELECT c.postname, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
+            $contestsStmt->execute([$userId]);
             $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) { $contests = []; }
+        } catch (Exception $e) { 
+            error_log("Contests error: " . $e->getMessage());
+            $contests = []; 
+        }
         
-        // 4. Prepare profile photo assets safely
+        // 5. Prepare profile photo assets safely
         $profilePhoto = null;
         $profilePhotoBlob = null;
         $profilePhotoType = null;
@@ -65,7 +83,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $profilePhoto = $user['profile_photo'];
         }
         
-        // 5. Send clean JSON response block
+        // 6. Send clean JSON response
         echo json_encode([
             'success' => true,
             'id' => $user['id'],
@@ -82,10 +100,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         ]);
         
     } catch (PDOException $e) {
+        error_log("PDO Exception: " . $e->getMessage());
         echo json_encode(['error' => 'Database exception: ' . $e->getMessage()]);
     }
     exit();
 }
+
 // Fetch all users from the database
 $users = [];
 $errorMessage = "";
@@ -435,7 +455,7 @@ try {
                                     <td><?php echo $user['registered_date'] ? date('M d, Y', strtotime($user['registered_date'])) : 'N/A'; ?></td>
                                     <td>
                                         <button class="view-btn" onclick="showUserInfo(<?php echo $user['id']; ?>)">
-                                             View Details
+                                            👤 View Details
                                         </button>
                                     </td>
                                 </tr>
@@ -527,7 +547,7 @@ try {
                 else if (reg.status === 'upcoming') statusClass = 'status-upcoming';
                 else if (reg.status === 'completed') statusClass = 'status-completed';
             
-                registrationsHtml += `<li> ${escapeHtml(reg.title)} <span class="election-status ${statusClass}">${escapeHtml(reg.status)}</span></li>`;
+                registrationsHtml += `<li>📌 ${escapeHtml(reg.title)} <span class="election-status ${statusClass}">${escapeHtml(reg.status)}</span></li>`;
             });
             registrationsHtml += '</ul>';
         } else {
@@ -539,7 +559,7 @@ try {
         if (data.votes && data.votes.length > 0) {
             votesHtml = '<ul class="info-list">';
             data.votes.forEach(vote => {
-                votesHtml += `<li> ${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
+                votesHtml += `<li>🗳️ ${escapeHtml(vote.title)} - ${escapeHtml(vote.postname)}${vote.voted_at ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.voted_at)})</span>` : ''}</li>`;
             });
             votesHtml += '</ul>';
         } else {
@@ -551,7 +571,7 @@ try {
         if (data.contests && data.contests.length > 0) {
             contestsHtml = '<ul class="info-list">';
             data.contests.forEach(contest => {
-                contestsHtml += `<li> ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
+                contestsHtml += `<li>🏆 ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
             });
             contestsHtml += '</ul>';
         } else {
@@ -563,27 +583,27 @@ try {
                 ${profilePhotoHtml}
             </div>
             <div class="info-section">
-                <strong> Username:</strong> ${escapeHtml(data.username)}
+                <strong>👤 Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
-                <strong> Full Name:</strong> ${escapeHtml(data.fullname)}
+                <strong>📛 Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
-                <strong> Email:</strong> ${escapeHtml(data.email)}
+                <strong>📧 Email:</strong> ${escapeHtml(data.email)}
             </div>
             <div class="info-section">
-                <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+                <strong>📅 Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
-                <strong> Election Registrations:</strong>
+                <strong>🗳️ Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
-                <strong> Votes Cast:</strong>
+                <strong>✅ Votes Cast:</strong>
                 ${votesHtml}
             </div>
             <div class="info-section">
-                <strong> Contesting For:</strong>
+                <strong>🏆 Contesting For:</strong>
                 ${contestsHtml}
             </div>
         `;
