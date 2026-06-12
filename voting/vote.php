@@ -1,6 +1,9 @@
 <?php
-// vote.php (Full PHP Code - PDO Version)
-session_start();
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 include("conn.php");
 
 if (empty($_SESSION["username"])) {
@@ -8,13 +11,9 @@ if (empty($_SESSION["username"])) {
     exit();
 }
 
-// Get user ID from username
-$userStmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
-$userStmt->execute([$_SESSION["username"]]);
-$user = $userStmt->fetch(PDO::FETCH_ASSOC);
-$userId = $user ? $user['id'] : null;
+$username = $_SESSION["username"];
 
-// Fetch Open Elections (Fix: add quotes around 'active')
+// Fetch Open Elections
 $openElectionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE status = 'active'");
 $openElectionsStmt->execute();
 $openElections = $openElectionsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -39,7 +38,7 @@ if ($electionId !== null) {
     if ($electionExistsStmt->rowCount() === 0) {
         $errorMessage = "<p style='color:red;'>The selected election does not exist.</p>";
     } else {
-        // Check if Voting is Open (using status column)
+        // Check if Voting is Open
         $votingOpenStmt = $conn->prepare("SELECT status FROM elections WHERE id = ?");
         $votingOpenStmt->execute([$electionId]);
         $electionStatus = $votingOpenStmt->fetch(PDO::FETCH_ASSOC);
@@ -47,16 +46,16 @@ if ($electionId !== null) {
         if ($electionStatus['status'] !== 'active') {
             $errorMessage = "<p style='color:red;'>Voting is currently closed for this election. Election status: " . $electionStatus['status'] . "</p>";
         } else {
-            // Check if User is Registered for this election
-            $userRegisteredStmt = $conn->prepare("SELECT 1 FROM user_elections WHERE user_id = ? AND election_id = ?");
-            $userRegisteredStmt->execute([$userId, $electionId]);
+            // Check if User is Registered for this election (using username)
+            $userRegisteredStmt = $conn->prepare("SELECT 1 FROM user_elections ue JOIN users u ON ue.user_id = u.id WHERE u.username = ? AND ue.election_id = ?");
+            $userRegisteredStmt->execute([$username, $electionId]);
             
             if ($userRegisteredStmt->rowCount() === 0) {
                 $errorMessage = "<p style='color:red;'>You are not registered for this election.</p>";
             } else {
-                // Check if User Already Voted (using new votes table structure)
-                $alreadyVotedStmt = $conn->prepare("SELECT 1 FROM votes WHERE user_id = ? AND election_id = ?");
-                $alreadyVotedStmt->execute([$userId, $electionId]);
+                // Check if User Already Voted (using username from votes table)
+                $alreadyVotedStmt = $conn->prepare("SELECT 1 FROM votes WHERE username = ? AND election_id = ?");
+                $alreadyVotedStmt->execute([$username, $electionId]);
                 
                 if ($alreadyVotedStmt->rowCount() > 0) {
                     $errorMessage = "<p style='color:red;'>You have already voted in this election.</p>";
@@ -100,33 +99,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
     if ($allPostsVoted) {
         $voteSuccess = true;
         
-        foreach ($votes as $postNameKey => $candidateName) {
-            $originalPostName = str_replace('_', ' ', $postNameKey);
-            
-            // Insert vote into votes table
-            $voteStmt = $conn->prepare("INSERT INTO votes (user_id, election_id, postname, candidate_name) VALUES (?, ?, ?, ?)");
-            if ($voteStmt->execute([$userId, $electionId, $originalPostName, $candidateName])) {
+        // Start transaction
+        $conn->beginTransaction();
+        
+        try {
+            foreach ($votes as $postNameKey => $candidateName) {
+                $originalPostName = str_replace('_', ' ', $postNameKey);
+                
+                // Insert vote into votes table (using username, not user_id)
+                $voteStmt = $conn->prepare("INSERT INTO votes (username, election_id, postname, candidate_name, voted_at) VALUES (?, ?, ?, ?, NOW())");
+                if (!$voteStmt->execute([$username, $electionId, $originalPostName, $candidateName])) {
+                    throw new Exception("Failed to insert vote");
+                }
+                
                 // Update vote count in contesters table
                 $updateStmt = $conn->prepare("UPDATE contesters SET votes = votes + 1 WHERE name = ? AND election_id = ? AND postname = ?");
                 if (!$updateStmt->execute([$candidateName, $electionId, $originalPostName])) {
-                    $voteSuccess = false;
-                    $errorMessage = "<p style='color:red;'>Error updating vote counts.</p>";
-                    break;
+                    throw new Exception("Failed to update vote count");
                 }
-            } else {
-                $voteSuccess = false;
-                $errorMessage = "<p style='color:red;'>Error submitting your vote. Please try again.</p>";
-                break;
             }
-        }
-        
-        if ($voteSuccess) {
+            
+            $conn->commit();
             $successMessage = "<p style='color:green;'>✓ Vote submitted successfully! Thank you for voting.</p>";
-            $showVoteForm = false; // Hide form after successful vote
+            $showVoteForm = false;
+            
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $errorMessage = "<p style='color:red;'>Error submitting your vote. Please try again.</p>";
+            error_log("Vote error: " . $e->getMessage());
         }
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -138,18 +143,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         
         .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             color: white;
             padding: 15px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
         }
         
         .navbar .title h1 {
@@ -181,28 +187,31 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             margin: 40px auto;
             background-color: white;
             padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         }
         
         .vote-container h2 {
             color: #333;
             margin-bottom: 20px;
+            text-align: center;
         }
         
         select, input[type="submit"] {
             width: 100%;
             padding: 12px;
             margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
             box-sizing: border-box;
             font-size: 14px;
+            transition: all 0.3s;
         }
         
         select:focus {
             outline: none;
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
         .vote-form label {
@@ -221,19 +230,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             font-weight: 600;
             border: none;
             margin-top: 20px;
-            transition: transform 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         
         input[type="submit"]:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
         }
         
         .success-message {
             background-color: #d4edda;
             color: #155724;
             padding: 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin: 15px 0;
             border-left: 4px solid #28a745;
         }
@@ -242,17 +251,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             background-color: #f8d7da;
             color: #721c24;
             padding: 12px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin: 15px 0;
             border-left: 4px solid #dc3545;
         }
         
+        .info-message {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #ffc107;
+        }
+        
         footer {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             padding: 20px 0;
             text-align: center;
             color: white;
             margin-top: 40px;
+            backdrop-filter: blur(10px);
         }
         
         footer ul {
@@ -287,6 +306,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             .vote-container {
                 width: 95%;
                 padding: 20px;
+                margin: 20px auto;
             }
         }
     </style>
@@ -299,7 +319,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
             </div>
             <div class="links">
                 <a href="index.php">All Votes</a>
-                <a href="vote.php">Vote</a>
+                <a href="vote.php" class="active">Vote</a>
                 <a href="apply.php">Contest</a>
                 <a href="contest.php">Contesters</a>
                 <a href="members.php">Reg. Voters</a>
@@ -337,8 +357,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
 
         <?php if ($showVoteForm && $electionId): ?>
             <form method="post" action="vote.php?election_id=<?php echo $electionId; ?>" class="vote-form">
-                <h3 style="color: #667eea; text-align: center;">Election ID: <?php echo $electionId; ?></h3>
-                <p style="text-align: center; color: #666;">Please select your preferred candidate for each position</p>
+                <h3 style="color: #667eea; text-align: center;">Vote in this Election</h3>
+                <p style="text-align: center; color: #666; margin-bottom: 20px;">Please select your preferred candidate for each position</p>
                 
                 <?php
                 // Fetch Posts and Candidates Dynamically
@@ -351,7 +371,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
                         $postName = $post['postname'];
                         $postKey = strtolower(str_replace(' ', '_', $postName));
                         
-                        $candidateStmt = $conn->prepare("SELECT name FROM contesters WHERE postname = ? AND election_id = ? ORDER BY name");
+                        $candidateStmt = $conn->prepare("SELECT name, profile_photo_blob, profile_photo_type FROM contesters WHERE postname = ? AND election_id = ? ORDER BY name");
                         $candidateStmt->execute([$postName, $electionId]);
                         $candidates = $candidateStmt->fetchAll(PDO::FETCH_ASSOC);
                         
@@ -364,7 +384,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
                         echo "</select>";
                     }
                 } else {
-                    echo "<p style='color:red;'>No candidates available for this election.</p>";
+                    echo "<div class='info-message'>No candidates available for this election.</div>";
                 }
                 ?>
                 
@@ -373,7 +393,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['submit']) && $showVot
         <?php endif; ?>
         
         <?php if (!$electionId && empty($openElections)): ?>
-            <div class="error-message">No active elections available at this time.</div>
+            <div class="info-message">No active elections available at this time.</div>
+        <?php endif; ?>
+        
+        <?php if (!$electionId && !empty($openElections)): ?>
+            <div class="info-message">Please select an election from the dropdown above to cast your vote.</div>
         <?php endif; ?>
     </div>
     
