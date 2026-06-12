@@ -155,7 +155,6 @@ try {
         }
 
         .container {
-            max-width: 3200px;
             margin: 0 auto;
             background: white;
             border-radius: 16px;
