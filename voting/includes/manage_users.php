@@ -53,7 +53,7 @@ try {
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 25px 30px;
+            padding: 20px;
         }
 
         .header h2 {
@@ -329,11 +329,11 @@ try {
     </style>
 </head>
 <body>
-    <div class="container">
-            <h2> Manage Users</h2>
+    <center class="header">
+        <h2> Manage Users</h2>
             <p>View and manage all registered users in the system</p>
-      
-        
+    </center>
+    <div class="container">               
         <div class="content">
             <?php if ($errorMessage): ?>
                 <div class="error-message">
