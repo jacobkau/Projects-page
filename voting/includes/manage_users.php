@@ -330,10 +330,9 @@ try {
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h2>📋 Manage Users</h2>
+            <h2> Manage Users</h2>
             <p>View and manage all registered users in the system</p>
-        </div>
+      
         
         <div class="content">
             <?php if ($errorMessage): ?>
@@ -368,7 +367,7 @@ try {
                                     <td><?php echo $user['registered_date'] ? date('M d, Y', strtotime($user['registered_date'])) : 'N/A'; ?></td>
                                     <td>
                                         <button class="view-btn" onclick="showUserInfo(<?php echo $user['id']; ?>)">
-                                            👤 View Details
+                                             View Details
                                         </button>
                                     </td>
                                 </tr>
@@ -465,7 +464,7 @@ try {
         if (data.registrations && data.registrations.length > 0) {
             registrationsHtml = '<ul class="info-list">';
             data.registrations.forEach(reg => {
-                registrationsHtml += `<li>📌 ${escapeHtml(reg)}</li>`;
+                registrationsHtml += `<li> ${escapeHtml(reg)}</li>`;
             });
             registrationsHtml += '</ul>';
         } else {
@@ -477,7 +476,7 @@ try {
         if (data.votes && data.votes.length > 0) {
             votesHtml = '<ul class="info-list">';
             data.votes.forEach(vote => {
-                votesHtml += `<li>🗳️ ${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
+                votesHtml += `<li>${escapeHtml(vote.title)}${vote.date ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.date)})</span>` : ''}</li>`;
             });
             votesHtml += '</ul>';
         } else {
@@ -489,7 +488,7 @@ try {
         if (data.contests && data.contests.length > 0) {
             contestsHtml = '<ul class="info-list">';
             data.contests.forEach(contest => {
-                contestsHtml += `<li>🏆 ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
+                contestsHtml += `<li> ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
             });
             contestsHtml += '</ul>';
         } else {
@@ -501,27 +500,27 @@ try {
                 ${profilePhotoHtml}
             </div>
             <div class="info-section">
-                <strong>👤 Username:</strong> ${escapeHtml(data.username)}
+                <strong> Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
-                <strong>📛 Full Name:</strong> ${escapeHtml(data.fullname)}
+                <strong>Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
-                <strong>📧 Email:</strong> ${escapeHtml(data.email)}
+                <strong> Email:</strong> ${escapeHtml(data.email)}
             </div>
             <div class="info-section">
-                <strong>📅 Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+                <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
-                <strong>🗳️ Election Registrations:</strong>
+                <strong>Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
-                <strong>✅ Votes Cast:</strong>
+                <strong> Votes Cast:</strong>
                 ${votesHtml}
             </div>
             <div class="info-section">
-                <strong>🏆 Contesting For:</strong>
+                <strong> Contesting For:</strong>
                 ${contestsHtml}
             </div>
         `;
