@@ -6,67 +6,72 @@ if (empty($_SESSION["username"])) {
     header("Location: login.php");
     exit();
 }
+
 $message = "";
-// Fetch Elections
-$electionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE voting_open = 1");
+$username = $_SESSION["username"];
+
+// Get user ID
+$userStmt = $conn->prepare("SELECT id FROM users WHERE username = ?");
+$userStmt->execute([$username]);
+$user = $userStmt->fetch(PDO::FETCH_ASSOC);
+$userId = $user ? $user['id'] : null;
+
+// Fetch Elections - Fix: Use status instead of voting_open
+$electionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE status = 'active'");
 $electionsStmt->execute();
-$electionsResult = $electionsStmt->get_result();
-$electionsStmt->close();
+$elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Handle Form Submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $electionId = isset($_POST['election_id']) ? intval($_POST['election_id']) : null;
     $postName = isset($_POST['postname']) ? $_POST['postname'] : null;
-    $name = $_SESSION["username"];
     $bio = isset($_POST['bio']) ? $_POST['bio'] : "";
+    $profile_photo = "";
 
-    // Handle profile photo upload
-    $profile_photo = ""; // Initialize profile photo path
-
-    // Check if a file was uploaded
-    if (empty($_FILES['profile_photo']['name'])) {
-        echo "<p style='color:red;'>Please upload a profile photo.</p>";
+    // Validate inputs
+    if ($electionId === null || $postName === null) {
+        $message = "<p style='color:red;'>Please select an election and a post.</p>";
+    } elseif (empty($_FILES['profile_photo']['name'])) {
+        $message = "<p style='color:red;'>Please upload a profile photo.</p>";
     } else {
+        // Handle profile photo upload
         $uploadDir = 'faces/';
         if (!is_dir($uploadDir)) {
-          mkdir($uploadDir, 0755, true);
+            mkdir($uploadDir, 0755, true);
         }
-        $fname = time() . '_' . basename($_FILES['profile_photo']['name']);
-        $target_file = $uploadDir . $fname;
-
-        if (move_uploaded_file($_FILES['profile_photo']['tmp_name'], $target_file)) {
-            $profile_photo = $fname;
+        
+        $allowedTypes = ['jpg', 'jpeg', 'png', 'gif'];
+        $fileExt = strtolower(pathinfo($_FILES['profile_photo']['name'], PATHINFO_EXTENSION));
+        
+        if (!in_array($fileExt, $allowedTypes)) {
+            $message = "<p style='color:red;'>Invalid file type. Only JPG, PNG, and GIF are allowed.</p>";
+        } elseif ($_FILES['profile_photo']['size'] > 2 * 1024 * 1024) {
+            $message = "<p style='color:red;'>File is too large. Maximum size is 2MB.</p>";
         } else {
-            echo "<p style='color:red;'>Error uploading profile photo.</p>";
-        }
+            $fname = time() . '_' . uniqid() . '.' . $fileExt;
+            $target_file = $uploadDir . $fname;
 
-        // Validate inputs
-        if ($electionId === null || $postName === null) {
-            echo "<p style='color:red;'>Please select an election and a post.</p>";
-        } else {
-            // Check if user has already applied for the same post in the same election
-            $checkStmt = $conn->prepare("SELECT 1 FROM contesters WHERE election_id = ? AND postname = ? AND name = ?");
-            $checkStmt->bind_param("iss", $electionId, $postName, $name);
-            $checkStmt->execute();
-            $checkStmt->store_result();
-
-            if ($checkStmt->num_rows > 0) {
-                echo "<p style='color:red;'>You have already applied for this post in this election.</p>";
-            } else {
-                $checkStmt->close();
-
-                // Insert data into contesters table
-                if (!empty($profile_photo)) {
-                    $insertStmt = $conn->prepare("INSERT INTO contesters (election_id, postname, name, bio, profile_photo) VALUES (?, ?, ?, ?, ?)");
-                    $insertStmt->bind_param("issss", $electionId, $postName, $name, $bio, $profile_photo);
-
-                    if ($insertStmt->execute()) {
-                        echo "<p style='color:green;'>Application submitted successfully!</p>";
+            if (move_uploaded_file($_FILES['profile_photo']['tmp_name'], $target_file)) {
+                $profile_photo = $fname;
+                
+                // Check if user has already applied for the same post in the same election
+                $checkStmt = $conn->prepare("SELECT 1 FROM contesters WHERE election_id = ? AND postname = ? AND user_id = ?");
+                $checkStmt->execute([$electionId, $postName, $userId]);
+                
+                if ($checkStmt->rowCount() > 0) {
+                    $message = "<p style='color:red;'>You have already applied for this post in this election.</p>";
+                } else {
+                    // Insert data into contesters table
+                    $insertStmt = $conn->prepare("INSERT INTO contesters (election_id, postname, user_id, name, bio, profile_photo, votes) VALUES (?, ?, ?, ?, ?, ?, 0)");
+                    
+                    if ($insertStmt->execute([$electionId, $postName, $userId, $username, $bio, $profile_photo])) {
+                        $message = "<p style='color:green;'>✓ Application submitted successfully!</p>";
                     } else {
-                        echo "<p style='color:red;'>Error: " . $insertStmt->error . "</p>";
+                        $message = "<p style='color:red;'>Error submitting application. Please try again.</p>";
                     }
-                    $insertStmt->close();
                 }
+            } else {
+                $message = "<p style='color:red;'>Error uploading profile photo.</p>";
             }
         }
     }
@@ -77,51 +82,195 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>OVMS | Apply</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OVMS | Apply for Candidacy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="An online Voting Management System.">
     <meta name="keywords" content="portfolio, projects, web development, design">
     <meta name="author" content="Jacob witty">
     <link rel="icon" href="logo.jpg" type="image/x-icon">
     <style>
-        /* (Your existing styles) */
-        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
-        .apply-container { width: 80%; max-width: 600px; margin: 20px auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
-        select, textarea, input[type="submit"], input[type="file"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        input[type="submit"] { background-color: #2ecc71; color: white; cursor: pointer; }
-        input[type="submit"]:hover { background-color: #27ae60; }
-        h2 { color: #333; margin-bottom: 10px; }
-        @media (max-width: 768px) { .apply-container { width: 95%; } }
-        .navbar { background-color: #3498db; color: white; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .navbar a { color: white; text-decoration: none; margin: 0 10px; }
-        footer { background-color: #3498db; color: white; text-align: center; padding: 20px; margin-top: 20px; }
-        footer ul { list-style: none; padding: 0; }
-        footer li { display: inline; margin: 0 10px; }
-        footer a { color: white; text-decoration: none; }
-    </style>
-    <script>
-       function fetchPosts(electionId) {
-    console.log("Fetching posts for election ID: " + electionId); // Log the election ID
-
-    if (electionId === "") {
-        document.getElementById('postname').innerHTML = '<option value="">Select Election First</option>';
-        return;
-    }
-
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState == 4) {
-            console.log("Response status: " + xhr.status); // Log the response status
-            console.log("Response text: " + xhr.responseText); // Log the response text
-
-            if (xhr.status == 200) {
-                document.getElementById('postname').innerHTML = xhr.responseText;
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f4f4f4; 
+        }
+        
+        .navbar { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            padding: 15px 20px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar .title h1 { 
+            margin: 0; 
+            font-size: 1.5rem; 
+        }
+        
+        .navbar .links { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px;
+        }
+        
+        .navbar a { 
+            color: white; 
+            text-decoration: none; 
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .navbar a:hover {
+            background-color: rgba(255,255,255,0.2);
+        }
+        
+        .apply-container { 
+            width: 90%;
+            max-width: 600px; 
+            margin: 40px auto; 
+            background-color: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+        }
+        
+        .apply-container h2 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        select, textarea, input[type="submit"], input[type="file"] { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 10px 0; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        
+        select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        textarea {
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        input[type="submit"] { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            transition: transform 0.2s;
+        }
+        
+        input[type="submit"]:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        label {
+            font-weight: 600;
+            color: #333;
+            margin-top: 10px;
+            display: block;
+        }
+        
+        .success-message {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+        
+        .error-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #dc3545;
+        }
+        
+        footer { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            text-align: center; 
+            padding: 20px; 
+            margin-top: 40px; 
+        }
+        
+        footer ul { 
+            list-style: none; 
+            padding: 0; 
+            margin: 0 0 10px 0;
+        }
+        
+        footer li { 
+            display: inline; 
+            margin: 0 15px; 
+        }
+        
+        footer a { 
+            color: white; 
+            text-decoration: none; 
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) { 
+            .navbar {
+                flex-direction: column;
+                text-align: center;
+                gap: 10px;
+            }
+            .apply-container { 
+                width: 95%;
+                padding: 20px;
             }
         }
-    };
-    xhr.open('GET', 'get_posts.php?election_id=' + electionId, true);
-    xhr.send();
-}
+    </style>
+    <script>
+    function fetchPosts(electionId) {
+        console.log("Fetching posts for election ID: " + electionId);
+        
+        if (electionId === "") {
+            document.getElementById('postname').innerHTML = '<option value="">Select Election First</option>';
+            return;
+        }
+        
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4) {
+                console.log("Response status: " + xhr.status);
+                console.log("Response text: " + xhr.responseText);
+                
+                if (xhr.status == 200) {
+                    document.getElementById('postname').innerHTML = xhr.responseText;
+                } else {
+                    document.getElementById('postname').innerHTML = '<option value="">Error loading posts</option>';
+                }
+            }
+        };
+        xhr.open('GET', 'get_posts.php?election_id=' + electionId, true);
+        xhr.send();
+    }
     </script>
 </head>
 <body>
@@ -144,35 +293,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     </header>
 
     <div class="apply-container">
-        <h2>Apply for a Post</h2>
+        <h2>🗳️ Apply for Candidacy</h2>
+        
+        <?php if ($message): ?>
+            <div class="<?php echo strpos($message, 'green') !== false ? 'success-message' : 'error-message'; ?>">
+                <?php echo $message; ?>
+            </div>
+        <?php endif; ?>
+        
         <form method="post" enctype="multipart/form-data">
-        <div id="message-display"><?php echo $message; ?></div>
-        <label for="profile_photo">Profile Photo:</label>
-            <input type="file" name="profile_photo" id="profile_photo" required>
-            <label for="election_id">Election:</label>
-            <select name="election_id" id="election_id" onchange="fetchPosts(this.value);">
-                <option value="">Select Election</option>
-                <?php while ($row = $electionsResult->fetch_assoc()): ?>
-                    <option value="<?php echo $row['id']; ?>"><?php echo $row['title']; ?></option>
-                <?php endwhile; ?>
+            <label for="profile_photo">Profile Photo *:</label>
+            <input type="file" name="profile_photo" id="profile_photo" accept="image/*" required>
+            <small style="color: #666;">Accepted formats: JPG, PNG, GIF (Max 2MB)</small>
+            
+            <label for="election_id">Select Election *:</label>
+            <select name="election_id" id="election_id" onchange="fetchPosts(this.value);" required>
+                <option value="">-- Select Election --</option>
+                <?php foreach ($elections as $election): ?>
+                    <option value="<?php echo $election['id']; ?>">
+                        <?php echo htmlspecialchars($election['title']); ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
 
-            <label for="postname">Post Name:</label>
-            <select name="postname" id="postname">
+            <label for="postname">Select Position *:</label>
+            <select name="postname" id="postname" required>
                 <option value="">Select Election First</option>
             </select>
 
             <label for="bio">Bio and Manifesto:</label>
-            <textarea name="bio" id="bio" rows="4"></textarea>
+            <textarea name="bio" id="bio" rows="5" placeholder="Tell voters about yourself, your qualifications, and your goals..."></textarea>
             
-
-            <input type="submit" value="Apply">
+            <input type="submit" value="Submit Application">
         </form>
     </div>
 
     <footer>
         <div>
-        <h3>Faster links</h3>
+            <h3>Faster links</h3>
             <ul>
                 <li><a href="index.php">Home</a></li>
                 <li><a href="vote.php">Vote</a></li>
@@ -180,7 +338,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <li><a href="logout.php">Log out</a></li>
             </ul>
         </div>
-        <div style="text-align: center; padding: 10px; background-color: rgba(0,0,0,0.2); font-size: 0.8em; margin-top: 10px;">
+        <div>
             &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
         </div>
     </footer>
