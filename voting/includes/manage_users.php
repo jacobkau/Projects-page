@@ -123,45 +123,6 @@ try {
     <title>Manage Users | Voting System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;            
-            background: white;
-            min-height: 100vh;
-        }
-
-        .header {
-            text-align: center;
-            padding: 30px 20px;
-            color: white;
-            background: transparent;
-        }
-
-        .header h2 {
-            margin: 0;
-            font-size: 32px;
-            font-weight: 600;
-        }
-
-        .header p {
-            margin: 10px 0 0;
-            opacity: 0.9;
-            font-size: 16px;
-        }
-
-        .container {
-            margin: 0 auto;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
-        }
-
         .content {
             padding: 30px;
         }
