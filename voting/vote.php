@@ -9,7 +9,7 @@ if (empty($_SESSION["username"])) {
 }
 
 // Fetch Open Elections
-$openElectionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE voting_open = 1");
+$openElectionsStmt = $conn->prepare("SELECT id, title FROM elections WHERE status = active");
 $openElectionsStmt->execute();
 $openElectionsResult = $openElectionsStmt->get_result();
 $openElectionsStmt->close();
