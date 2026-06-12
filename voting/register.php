@@ -20,31 +20,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+    
+    // Handle profile photo - convert to BLOB for database storage
+    $profilePhotoBlob = null;
+    $profilePhotoType = null;
 
-    // Fix: Use absolute path for upload directory
-    $uploadDir = __DIR__ . "/uploads/";
-    $profilePhotoPath = "";
-
-    // Create uploads directory if it doesn't exist
-    if (!is_dir($uploadDir)) {
-        if (mkdir($uploadDir, 0755, true)) {
-            error_log("Uploads directory created at: " . $uploadDir);
-        } else {
-            error_log("Failed to create uploads directory at: " . $uploadDir);
-            echo "<script>alert('Failed to create upload directory. Please contact administrator.'); window.history.back();</script>";
-            exit;
-        }
-    }
-
-    // Check directory permissions
-    if (!is_writable($uploadDir)) {
-        error_log("Uploads directory is not writable: " . $uploadDir);
-        echo "<script>alert('Upload directory is not writable. Please contact administrator.'); window.history.back();</script>";
-        exit;
-    }
-
-    // Handle profile photo upload
-    if (!empty($profilePhoto['name'])) {
+    if (!empty($profilePhoto['name']) && $profilePhoto['error'] === UPLOAD_ERR_OK) {
         $allowedTypes = ['jpg', 'jpeg', 'png', 'gif'];
         $fileExt = strtolower(pathinfo($profilePhoto['name'], PATHINFO_EXTENSION));
 
@@ -59,35 +40,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit;
         }
 
-        // Check if file was uploaded successfully
-        if ($profilePhoto['error'] !== UPLOAD_ERR_OK) {
-            $uploadErrors = [
-                UPLOAD_ERR_INI_SIZE => "File exceeds upload_max_filesize directive",
-                UPLOAD_ERR_FORM_SIZE => "File exceeds MAX_FILE_SIZE directive",
-                UPLOAD_ERR_PARTIAL => "File was only partially uploaded",
-                UPLOAD_ERR_NO_FILE => "No file was uploaded",
-                UPLOAD_ERR_NO_TMP_DIR => "Missing temporary folder",
-                UPLOAD_ERR_CANT_WRITE => "Failed to write file to disk",
-                UPLOAD_ERR_EXTENSION => "File upload stopped by extension"
-            ];
-            $errorMsg = isset($uploadErrors[$profilePhoto['error']]) ? $uploadErrors[$profilePhoto['error']] : "Unknown upload error";
-            echo "<script>alert('Upload error: $errorMsg'); window.history.back();</script>";
-            exit;
-        }
-
-        $profilePhotoPath = "uploads/" . uniqid("profile_", true) . "." . $fileExt;
-        $fullPath = __DIR__ . "/" . $profilePhotoPath;
-
-        if (!move_uploaded_file($profilePhoto['tmp_name'], $fullPath)) {
-            error_log("Failed to move uploaded file from " . $profilePhoto['tmp_name'] . " to " . $fullPath);
-            echo "<script>alert('Failed to upload profile photo. Please check directory permissions.'); window.history.back();</script>";
-            exit;
-        }
-        
-        error_log("Profile photo uploaded successfully to: " . $fullPath);
+        // Read file content for database storage
+        $profilePhotoBlob = file_get_contents($profilePhoto['tmp_name']);
+        $profilePhotoType = $fileExt;
     }
 
     try {
+        // First, check if we need to add image columns to users table
+        try {
+            $checkColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'profile_photo_blob'");
+            if ($checkColumn->rowCount() == 0) {
+                // Add columns for BLOB storage
+                $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_blob LONGBLOB");
+                $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_type VARCHAR(10)");
+                error_log("Added BLOB columns to users table");
+            }
+        } catch (PDOException $e) {
+            error_log("Note: " . $e->getMessage());
+        }
+
         // Check if user already exists
         $checkUserStmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
         $checkUserStmt->execute([$username, $email]);
@@ -98,11 +69,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $checkUserStmt->closeCursor();
 
-        // Fix: Match your actual database columns
-        // Your table has: id, username, name, email, profile_photo, password, date
-        $insertUserStmt = $conn->prepare("INSERT INTO users (username, name, email, profile_photo, password) VALUES (?, ?, ?, ?, ?)");
+        // Insert user with BLOB image data
+        $insertUserStmt = $conn->prepare("INSERT INTO users (username, name, email, password, profile_photo_blob, profile_photo_type) VALUES (?, ?, ?, ?, ?, ?)");
         
-        if (!$insertUserStmt->execute([$username, $name, $email, $profilePhotoPath, $passwordHash])) {
+        if (!$insertUserStmt->execute([$username, $name, $email, $passwordHash, $profilePhotoBlob, $profilePhotoType])) {
             $error = $insertUserStmt->errorInfo();
             throw new Exception("Failed to insert user: " . $error[2]);
         }
@@ -122,10 +92,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     } catch (Exception $e) {
         error_log("Registration error: " . $e->getMessage());
-        // Delete uploaded file if registration fails
-        if (!empty($profilePhotoPath) && file_exists(__DIR__ . "/" . $profilePhotoPath)) {
-            unlink(__DIR__ . "/" . $profilePhotoPath);
-        }
         echo "<script>alert('Error: Registration failed. " . htmlspecialchars($e->getMessage()) . "'); window.history.back();</script>";
     }
 }
@@ -137,10 +103,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <title>OVMS | Registration</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="An online Voting Management System.">
-    <meta name="keywords" content="portfolio, projects, web development, design">
-    <meta name="author" content="Jacob Witty">
-    <link rel="icon" href="logo.jpg" type="image/x-icon">
     <style>
         .registration-container {
             display: flex;
@@ -236,8 +198,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-right: 12px;
             width: 20px;
             height: 20px;
-            border: 1px solid #D1D5DB;
-            border-radius: 4px;
             cursor: pointer;
         }
 
@@ -295,18 +255,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             color: #4F46E5;
             text-decoration: underline;
         }
-        
-        .success-message {
-            color: #10B981;
-            font-size: 14px;
-            margin-top: 5px;
-            margin-bottom: 20px;
-            text-align: center;
-            padding: 10px;
-            background-color: #D1FAE5;
-            border-radius: 8px;
-            border-left: 4px solid #10B981;
-        }
     </style>
 </head>
 <body>
@@ -341,7 +289,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <label class="form-label">Select Election(s):</label>
                     <?php
                     try {
-                        // Fetch elections that are active or upcoming (not completed)
                         $stmt = $conn->prepare("SELECT id, title, status FROM elections WHERE status != 'completed' ORDER BY start_date DESC");
                         $stmt->execute();
                         $elections = $stmt->fetchAll(PDO::FETCH_ASSOC);
