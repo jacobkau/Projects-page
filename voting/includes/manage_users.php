@@ -1,5 +1,4 @@
 <?php
-session_start();
 include("conn.php");
 
 // Admin Authentication (optional - remove if not needed)
@@ -174,8 +173,8 @@ try {
         }
 
         th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background:#f5f5f5;
+            color: #333;
             font-weight: 600;
             font-size: 14px;
         }
