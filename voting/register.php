@@ -6,6 +6,28 @@ error_reporting(E_ALL);
 
 include("conn.php");
 
+// Function to create user_elections table if it doesn't exist
+function createUserElectionsTable($conn) {
+    try {
+        $sql = "CREATE TABLE IF NOT EXISTS user_elections (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            election_id INT NOT NULL,
+            registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_registration (user_id, election_id)
+        )";
+        $conn->exec($sql);
+        error_log("user_elections table checked/created successfully");
+        return true;
+    } catch (PDOException $e) {
+        error_log("Error creating user_elections table: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Create the table if it doesn't exist
+createUserElectionsTable($conn);
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $name = trim($_POST['name']);
@@ -46,11 +68,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     try {
-        // First, check if we need to add image columns to users table
+        // Check if we need to add BLOB columns to users table
         try {
             $checkColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'profile_photo_blob'");
             if ($checkColumn->rowCount() == 0) {
-                // Add columns for BLOB storage
                 $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_blob LONGBLOB");
                 $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_type VARCHAR(10)");
                 error_log("Added BLOB columns to users table");
@@ -69,7 +90,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $checkUserStmt->closeCursor();
 
-        // Insert user with BLOB image data
+        // Insert user
         $insertUserStmt = $conn->prepare("INSERT INTO users (username, name, email, password, profile_photo_blob, profile_photo_type) VALUES (?, ?, ?, ?, ?, ?)");
         
         if (!$insertUserStmt->execute([$username, $name, $email, $passwordHash, $profilePhotoBlob, $profilePhotoType])) {
@@ -81,17 +102,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $insertUserStmt->closeCursor();
 
         // Insert user's election registrations
-        $insertElectionStmt = $conn->prepare("INSERT IGNORE INTO elections (user_id, election_id) VALUES (?, ?)");
+        $insertElectionStmt = $conn->prepare("INSERT IGNORE INTO user_elections (user_id, election_id) VALUES (?, ?)");
         
+        $registeredCount = 0;
         foreach ($selectedElections as $electionId) {
-            $insertElectionStmt->execute([$userId, $electionId]);
+            if ($insertElectionStmt->execute([$userId, $electionId])) {
+                $registeredCount++;
+            }
         }
         $insertElectionStmt->closeCursor();
 
-        echo "<script>alert('Registration successful! You have been registered for the selected elections.'); window.location.href = 'login.php';</script>";
+        if ($registeredCount > 0) {
+            echo "<script>alert('Registration successful! You have been registered for " . $registeredCount . " election(s).'); window.location.href = 'login.php';</script>";
+        } else {
+            throw new Exception("Failed to register for elections");
+        }
 
     } catch (Exception $e) {
         error_log("Registration error: " . $e->getMessage());
+        // Delete user if registration fails
+        if (isset($userId)) {
+            $deleteUser = $conn->prepare("DELETE FROM users WHERE id = ?");
+            $deleteUser->execute([$userId]);
+        }
         echo "<script>alert('Error: Registration failed. " . htmlspecialchars($e->getMessage()) . "'); window.history.back();</script>";
     }
 }
@@ -236,90 +269,4 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-top: 5px;
             padding: 10px;
             background-color: #FEE2E2;
-            border-radius: 6px;
-            text-align: center;
-        }
-
-        .register-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .register-link a {
-            color: #6366F1;
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-
-        .register-link a:hover {
-            color: #4F46E5;
-            text-decoration: underline;
-        }
-    </style>
-</head>
-<body>
-    <div class="registration-container">
-        <div class="registration-form-wrapper">
-            <h1 class="registration-title">Create Account</h1>
-            <p style="text-align: center; color: #6B7280; margin-bottom: 30px;">Join our voting system today</p>
-            
-            <form method="post" action="register.php" enctype="multipart/form-data" class="registration-form">
-                <div class="form-group">
-                    <label for="username" class="form-label">Username:</label>
-                    <input type="text" name="username" id="username" class="form-input" placeholder="Choose a username" required>
-                </div>
-                <div class="form-group">
-                    <label for="name" class="form-label">Full Names:</label>
-                    <input type="text" name="name" id="name" class="form-input" placeholder="Enter your full name" required>
-                </div>
-                <div class="form-group">
-                    <label for="email" class="form-label">Email:</label>
-                    <input type="email" name="email" id="email" class="form-input" placeholder="your@email.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="password" class="form-label">Password:</label>
-                    <input type="password" name="password" id="password" class="form-input" placeholder="Create a password" required>
-                </div>
-                <div class="form-group">
-                    <label for="profile_photo" class="form-label">Profile Photo (Optional):</label>
-                    <input type="file" name="profile_photo" id="profile_photo" class="form-input-file" accept="image/*">
-                    <small style="color: #6B7280; font-size: 12px;">Accepted formats: JPG, PNG, GIF (Max 2MB)</small>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Select Election(s):</label>
-                    <?php
-                    try {
-                        $stmt = $conn->prepare("SELECT id, title, status FROM elections WHERE status != 'completed' ORDER BY start_date DESC");
-                        $stmt->execute();
-                        $elections = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                        
-                        if (empty($elections)) {
-                            echo "<p class='error-message'>No elections available for registration at this time.</p>";
-                        } else {
-                            foreach ($elections as $election) {
-                                $statusColor = $election['status'] == 'active' ? '#10B981' : '#F59E0B';
-                                echo "<div class='form-check'>";
-                                echo "<input type='checkbox' name='elections[]' value='" . $election['id'] . "' id='election_" . $election['id'] . "' class='form-check-input'>";
-                                echo "<label class='form-check-label' for='election_" . $election['id'] . "'>";
-                                echo htmlspecialchars($election['title']);
-                                echo " <span style='color: $statusColor; font-size: 12px;'>(" . ucfirst($election['status']) . ")</span>";
-                                echo "</label>";
-                                echo "</div>";
-                            }
-                        }
-                        $stmt->closeCursor();
-                    } catch (Exception $e) {
-                        error_log("Election fetch error: " . $e->getMessage());
-                        echo "<p class='error-message'>Error fetching elections. Please try again later.</p>";
-                    }
-                    ?>
-                </div>
-                <button type="submit" class="form-button">Register</button>
-            </form>
-            <div class="register-link">
-                <p>Already have an account? <a href="login.php">Login here</a></p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
+            border
