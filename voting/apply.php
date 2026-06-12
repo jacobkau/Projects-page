@@ -1,7 +1,15 @@
 <?php
 session_start();
 include("conn.php");
-
+// Add this debug section temporarily to see what's happening
+if (isset($_GET['debug'])) {
+    echo "<pre>";
+    echo "Elections found: " . count($elections) . "\n";
+    foreach ($elections as $e) {
+        echo "Election ID: " . $e['id'] . " - " . $e['title'] . "\n";
+    }
+    echo "</pre>";
+}
 if (empty($_SESSION["username"])) {
     header("Location: login.php");
     exit();
