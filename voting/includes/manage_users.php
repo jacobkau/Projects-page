@@ -1,14 +1,13 @@
 <?php
-session_start();
 include("conn.php");
 
-// Admin Authentication (optional - remove if not needed)
+// Admin Authentication 
 if (!isset($_SESSION['admin_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
-// Handle AJAX request for user info - MUST be at the top and exit properly
+// Handle AJAX request for user info
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
     header('Content-Type: application/json');
     
@@ -131,8 +130,8 @@ try {
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;            
+            background: white;
             min-height: 100vh;
         }
 
@@ -156,7 +155,7 @@ try {
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 3200px;
             margin: 0 auto;
             background: white;
             border-radius: 16px;
@@ -186,7 +185,8 @@ try {
         }
 
         th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            
+            background: white;
             color: white;
             font-weight: 600;
             font-size: 14px;
@@ -411,7 +411,7 @@ try {
 </head>
 <body>
     <div class="header">
-        <h2>📋 Manage Users</h2>
+        <h2> Manage Users</h2>
         <p>View and manage all registered users in the system</p>
     </div>
     
