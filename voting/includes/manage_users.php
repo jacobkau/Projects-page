@@ -1,5 +1,4 @@
 <?php
-session_start(); // Add this at the very beginning
 include("conn.php");
 
 // Admin Authentication (optional - remove if not needed)
@@ -8,7 +7,7 @@ if (!isset($_SESSION['admin_id']) && !isset($_SESSION['username'])) {
     exit();
 }
 
-// Handle AJAX request for user info - MUST be at the top
+// Handle AJAX request for user info - MUST be at the top and exit properly
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['action'] == 'get_user') {
     header('Content-Type: application/json');
     
@@ -20,7 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
     }
     
     try {
-        // 1. Fetch user basic info using ? placeholders (more compatible)
+        // Fetch user basic info
         $userStmt = $conn->prepare("SELECT id, username, name as fullname, email, profile_photo, profile_photo_blob, profile_photo_type, date as registered_date FROM users WHERE id = ?");
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch(PDO::FETCH_ASSOC);
@@ -30,18 +29,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             exit();
         }
         
-        // 2. Fetch user's election registrations
+        // Fetch user's election registrations
         $registrations = [];
         try {
             $regStmt = $conn->prepare("SELECT e.id, e.title, e.status FROM user_elections ue JOIN elections e ON ue.election_id = e.id WHERE ue.user_id = ?");
             $regStmt->execute([$userId]);
             $registrations = $regStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) { 
-            error_log("Registrations error: " . $e->getMessage());
             $registrations = []; 
         }
 
-        // 3. Fetch user's votes
+        // Fetch user's votes
         $votes = [];
         try {
             $votesStmt = $conn->prepare("SELECT election_id, postname, candidate_name, voted_at FROM votes WHERE user_id = ? ORDER BY voted_at DESC");
@@ -56,22 +54,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
                 $vote['title'] = $election['title'] ?? 'Unknown Election';
             }
         } catch (Exception $e) { 
-            error_log("Votes error: " . $e->getMessage());
             $votes = []; 
         }
         
-        // 4. Fetch user's contest applications
+        // Fetch user's contest applications
         $contests = [];
         try {
             $contestsStmt = $conn->prepare("SELECT c.postname, e.title as election FROM contesters c JOIN elections e ON c.election_id = e.id WHERE c.user_id = ?");
             $contestsStmt->execute([$userId]);
             $contests = $contestsStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) { 
-            error_log("Contests error: " . $e->getMessage());
             $contests = []; 
         }
         
-        // 5. Prepare profile photo assets safely
+        // Prepare profile photo
         $profilePhoto = null;
         $profilePhotoBlob = null;
         $profilePhotoType = null;
@@ -83,7 +79,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
             $profilePhoto = $user['profile_photo'];
         }
         
-        // 6. Send clean JSON response
+        // Send JSON response
         echo json_encode([
             'success' => true,
             'id' => $user['id'],
@@ -100,12 +96,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
         ]);
         
     } catch (PDOException $e) {
-        error_log("PDO Exception: " . $e->getMessage());
-        echo json_encode(['error' => 'Database exception: ' . $e->getMessage()]);
+        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
     }
     exit();
 }
 
+// If not AJAX request, continue with normal page display
 // Fetch all users from the database
 $users = [];
 $errorMessage = "";
@@ -139,7 +135,6 @@ try {
             min-height: 100vh;
         }
 
-        /* Transparent Header - No background color */
         .header {
             text-align: center;
             padding: 30px 20px;
@@ -172,7 +167,6 @@ try {
             padding: 30px;
         }
 
-        /* Table Styles */
         .table-responsive {
             overflow-x: auto;
         }
@@ -219,7 +213,6 @@ try {
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
 
-        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -417,7 +410,7 @@ try {
 </head>
 <body>
     <div class="header">
-        <h2>📋 Manage Users</h2>
+        <h2>Manage Users</h2>
         <p>View and manage all registered users in the system</p>
     </div>
     
@@ -434,7 +427,7 @@ try {
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
-                    <table id="usersTable">
+                    <table>
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -499,24 +492,34 @@ try {
         modalTitle.textContent = `User Information - ID: ${userId}`;
         
         try {
-            const formData = new URLSearchParams();
-            formData.append('action', 'get_user');
-            formData.append('user_id', userId);
-            
-            const response = await fetch(window.location.href, {
+            // Use fetch with proper URL
+            const response = await fetch('', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: formData.toString()
+                body: 'action=get_user&user_id=' + userId
             });
             
-            const data = await response.json();
+            const text = await response.text();
+            console.log('Raw response:', text); // Debug: see what's coming back
+            
+            // Try to parse JSON
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error('JSON parse error:', e);
+                modalBody.innerHTML = `<div class="error-message">❌ Server returned invalid response. Please check error logs.</div>`;
+                return;
+            }
             
             if (data.error) {
                 modalBody.innerHTML = `<div class="error-message">❌ ${data.error}</div>`;
-            } else {
+            } else if (data.success) {
                 displayUserInfo(data);
+            } else {
+                modalBody.innerHTML = `<div class="error-message">❌ Failed to load user information.</div>`;
             }
         } catch (error) {
             console.error('Error fetching user info:', error);
@@ -547,7 +550,7 @@ try {
                 else if (reg.status === 'upcoming') statusClass = 'status-upcoming';
                 else if (reg.status === 'completed') statusClass = 'status-completed';
             
-                registrationsHtml += `<li>📌 ${escapeHtml(reg.title)} <span class="election-status ${statusClass}">${escapeHtml(reg.status)}</span></li>`;
+                registrationsHtml += `<li> ${escapeHtml(reg.title)} <span class="election-status ${statusClass}">${escapeHtml(reg.status)}</span></li>`;
             });
             registrationsHtml += '</ul>';
         } else {
@@ -559,7 +562,7 @@ try {
         if (data.votes && data.votes.length > 0) {
             votesHtml = '<ul class="info-list">';
             data.votes.forEach(vote => {
-                votesHtml += `<li>🗳️ ${escapeHtml(vote.title)} - ${escapeHtml(vote.postname)}${vote.voted_at ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.voted_at)})</span>` : ''}</li>`;
+                votesHtml += `<li> ${escapeHtml(vote.title)} - ${escapeHtml(vote.postname)}${vote.voted_at ? ` <span style="color:#999; font-size:12px;">(${escapeHtml(vote.voted_at)})</span>` : ''}</li>`;
             });
             votesHtml += '</ul>';
         } else {
@@ -571,7 +574,7 @@ try {
         if (data.contests && data.contests.length > 0) {
             contestsHtml = '<ul class="info-list">';
             data.contests.forEach(contest => {
-                contestsHtml += `<li>🏆 ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
+                contestsHtml += `<li> ${escapeHtml(contest.postname)} - ${escapeHtml(contest.election)}</li>`;
             });
             contestsHtml += '</ul>';
         } else {
@@ -583,27 +586,27 @@ try {
                 ${profilePhotoHtml}
             </div>
             <div class="info-section">
-                <strong>👤 Username:</strong> ${escapeHtml(data.username)}
+                <strong> Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
-                <strong>📛 Full Name:</strong> ${escapeHtml(data.fullname)}
+                <strong> Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
-                <strong>📧 Email:</strong> ${escapeHtml(data.email)}
+                <strong> Email:</strong> ${escapeHtml(data.email)}
             </div>
             <div class="info-section">
-                <strong>📅 Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+                <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
-                <strong>🗳️ Election Registrations:</strong>
+                <strong>Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
-                <strong>✅ Votes Cast:</strong>
+                <strong> Votes Cast:</strong>
                 ${votesHtml}
             </div>
             <div class="info-section">
-                <strong>🏆 Contesting For:</strong>
+                <strong> Contesting For:</strong>
                 ${contestsHtml}
             </div>
         `;
