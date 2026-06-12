@@ -1,4 +1,5 @@
 <?php
+session_start();
 include("conn.php");
 
 // Admin Authentication (optional - remove if not needed)
@@ -410,7 +411,7 @@ try {
 </head>
 <body>
     <div class="header">
-        <h2>Manage Users</h2>
+        <h2>📋 Manage Users</h2>
         <p>View and manage all registered users in the system</p>
     </div>
     
@@ -427,7 +428,7 @@ try {
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
-                    <table>
+                    <table id="usersTable">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -492,8 +493,9 @@ try {
         modalTitle.textContent = `User Information - ID: ${userId}`;
         
         try {
-            // Use fetch with proper URL
-            const response = await fetch('', {
+            // IMPORTANT: Use the actual PHP file path, not the main.php router
+            // Change 'users' to whatever your actual filename is (without .php)
+            const response = await fetch('manage_users.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -502,9 +504,8 @@ try {
             });
             
             const text = await response.text();
-            console.log('Raw response:', text); // Debug: see what's coming back
+            console.log('Raw response:', text);
             
-            // Try to parse JSON
             let data;
             try {
                 data = JSON.parse(text);
@@ -586,27 +587,27 @@ try {
                 ${profilePhotoHtml}
             </div>
             <div class="info-section">
-                <strong> Username:</strong> ${escapeHtml(data.username)}
+                <strong>Username:</strong> ${escapeHtml(data.username)}
             </div>
             <div class="info-section">
-                <strong> Full Name:</strong> ${escapeHtml(data.fullname)}
+                <strong>Full Name:</strong> ${escapeHtml(data.fullname)}
             </div>
             <div class="info-section">
-                <strong> Email:</strong> ${escapeHtml(data.email)}
+                <strong>Email:</strong> ${escapeHtml(data.email)}
             </div>
             <div class="info-section">
-                <strong> Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
+                <strong>Registered:</strong> ${escapeHtml(data.registered_date) || 'N/A'}
             </div>
             <div class="info-section">
                 <strong>Election Registrations:</strong>
                 ${registrationsHtml}
             </div>
             <div class="info-section">
-                <strong> Votes Cast:</strong>
+                <strong>Votes Cast:</strong>
                 ${votesHtml}
             </div>
             <div class="info-section">
-                <strong> Contesting For:</strong>
+                <strong>Contesting For:</strong>
                 ${contestsHtml}
             </div>
         `;
