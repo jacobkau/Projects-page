@@ -24,7 +24,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax_action'])) {
         }
         
         try {
-            // Check if post already exists
             $checkStmt = $conn->prepare("SELECT id FROM election_posts WHERE election_id = ? AND postname = ?");
             $checkStmt->execute([$electionId, $postName]);
             if ($checkStmt->rowCount() > 0) {
@@ -47,7 +46,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax_action'])) {
         $postId = intval($_POST['post_id']);
         
         try {
-            // Check if post has candidates
             $checkStmt = $conn->prepare("SELECT id FROM contesters WHERE postname = (SELECT postname FROM election_posts WHERE id = ?) AND election_id = (SELECT election_id FROM election_posts WHERE id = ?)");
             $checkStmt->execute([$postId, $postId]);
             if ($checkStmt->rowCount() > 0) {
@@ -110,10 +108,8 @@ if (isset($_POST['delete_election'])) {
     $electionId = intval($_POST['election_id']);
     
     try {
-        // Start transaction
         $conn->beginTransaction();
         
-        // Delete related records
         $stmt = $conn->prepare("DELETE FROM election_posts WHERE election_id = ?");
         $stmt->execute([$electionId]);
         
@@ -137,7 +133,6 @@ if (isset($_POST['delete_election'])) {
     }
 }
 
-// Function to get election data
 function getElections($conn) {
     try {
         $sql = "SELECT * FROM elections ORDER BY id DESC";
@@ -155,7 +150,6 @@ function getElections($conn) {
     }
 }
 
-// Function to update election status
 function updateElectionStatus($conn, $electionId, $status) {
     try {
         $stmt = $conn->prepare("UPDATE elections SET status = ? WHERE id = ?");
@@ -167,7 +161,6 @@ function updateElectionStatus($conn, $electionId, $status) {
     }
 }
 
-// Function to get candidate count for an election
 function getCandidateCountForElection($conn, $electionId) {
     try {
         $stmt = $conn->prepare("SELECT COUNT(c.id) as count FROM contesters c WHERE c.election_id = ?");
@@ -180,7 +173,6 @@ function getCandidateCountForElection($conn, $electionId) {
     }
 }
 
-// Function to get registered voter count for an election
 function getRegisteredVoterCountForElection($conn, $electionId) {
     try {
         $stmt = $conn->prepare("SELECT COUNT(DISTINCT user_id) as count FROM user_elections WHERE election_id = ?");
@@ -190,17 +182,6 @@ function getRegisteredVoterCountForElection($conn, $electionId) {
     } catch (PDOException $e) {
         error_log("Error getting voter count: " . $e->getMessage());
         return 0;
-    }
-}
-
-// Function to get posts for an election
-function getElectionPosts($conn, $electionId) {
-    try {
-        $stmt = $conn->prepare("SELECT id, postname FROM election_posts WHERE election_id = ? ORDER BY postname");
-        $stmt->execute([$electionId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        return [];
     }
 }
 
@@ -615,6 +596,9 @@ if (isset($_GET['edit_id'])) {
     <script>
     let currentElectionId = null;
     
+    // Get the base URL for AJAX requests - use the current file path
+    const ajaxUrl = window.location.pathname + '?page=elections';
+    
     function managePosts(electionId, electionTitle) {
         currentElectionId = electionId;
         document.getElementById('postsModalTitle').innerHTML = `Manage Posts - ${electionTitle}`;
@@ -638,7 +622,7 @@ if (isset($_GET['edit_id'])) {
             formData.append('ajax_action', 'get_posts');
             formData.append('election_id', currentElectionId);
             
-            const response = await fetch(window.location.href, {
+            const response = await fetch(ajaxUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: formData.toString()
@@ -660,11 +644,11 @@ if (isset($_GET['edit_id'])) {
             } else if (data.success && data.posts.length === 0) {
                 postsList.innerHTML = '<p style="text-align: center; color: #999;">No posts created yet. Add your first post above.</p>';
             } else {
-                postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts</p>';
+                postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts: ' + (data.message || 'Unknown error') + '</p>';
             }
         } catch (error) {
             console.error('Error:', error);
-            postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts</p>';
+            postsList.innerHTML = '<p style="text-align: center; color: red;">Error loading posts. Please check console for details.</p>';
         }
     }
     
@@ -684,7 +668,7 @@ if (isset($_GET['edit_id'])) {
             formData.append('election_id', currentElectionId);
             formData.append('postname', postName);
             
-            const response = await fetch(window.location.href, {
+            const response = await fetch(ajaxUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: formData.toString()
@@ -712,7 +696,7 @@ if (isset($_GET['edit_id'])) {
             formData.append('ajax_action', 'delete_post');
             formData.append('post_id', postId);
             
-            const response = await fetch(window.location.href, {
+            const response = await fetch(ajaxUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: formData.toString()
