@@ -2,13 +2,15 @@
 session_start();
 include("conn.php");
 
+$error = "";
+
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($_POST['password'])) {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
 
     try {
         // Note: Your table uses 'password' column, not 'password_hash'
-        $stmt = $conn->prepare("SELECT id, username, name, email, profile_photo, password FROM users WHERE username = ?");
+        $stmt = $conn->prepare("SELECT id, username, name, email, profile_photo_blob, profile_photo_type, password FROM users WHERE username = ?");
         $stmt->execute([$username]);
         
         if ($stmt->rowCount() == 1) {
@@ -19,14 +21,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                 // Store user info in session
                 $_SESSION['user_id'] = $row['id'];
                 $_SESSION['username'] = $row['username'];
-                $_SESSION['full_name'] = $row['name'];  // Note: 'name' column, not 'full_name'
+                $_SESSION['full_name'] = $row['name'];
                 $_SESSION['email'] = $row['email'];
+                
                 if (!empty($row['profile_photo_blob'])) {
-        $_SESSION['profile_photo'] = 'data:image/' . $row['profile_photo_type'] . ';base64,' . base64_encode($row['profile_photo_blob']);
-    } else {
-        $_SESSION['profile_photo'] = null;
-    }
-    
+                    $_SESSION['profile_photo'] = 'data:image/' . $row['profile_photo_type'] . ';base64,' . base64_encode($row['profile_photo_blob']);
+                } else {
+                    $_SESSION['profile_photo'] = null;
+                }
+                
                 $_SESSION['user_logged_in'] = true;
 
                 // Redirect to profile page
@@ -141,6 +144,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
             cursor: pointer;
             transition: all 0.3s ease;
             width: fit-content;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 160px;
         }
 
         .form-button:hover {
@@ -151,6 +159,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
 
         .form-button:active {
             transform: translateY(0);
+        }
+        
+        .form-button.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .form-button.loading:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .form-button .btn-text {
+            display: inline-block;
+        }
+        
+        .form-button .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+        }
+        
+        .form-button.loading .spinner {
+            display: inline-block;
+        }
+        
+        .form-button.loading .btn-text {
+            display: inline-block;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .error-message {
@@ -224,7 +270,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
             <h1 class="login-title">Welcome Back!</h1>
             <p style="text-align: center; color: #6B7280; margin-bottom: 30px;">Please login to your account</p>
             
-            <?php if (isset($error)): ?>
+            <?php if (isset($error) && !empty($error)): ?>
                 <div class="error-message">
                     <?php echo $error; ?>
                 </div>
@@ -236,7 +282,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                 </div>
             <?php endif; ?>
             
-            <form method="post" action="login.php" class="login-form">
+            <form method="post" action="login.php" class="login-form" id="loginForm">
                 <div class="form-group">
                     <label for="username" class="form-label">Username</label>
                     <input type="text" name="username" id="username" class="form-input" placeholder="Enter your username" required autofocus>
@@ -245,7 +291,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                     <label for="password" class="form-label">Password</label>
                     <input type="password" name="password" id="password" class="form-input" placeholder="Enter your password" required>
                 </div>
-                <button type="submit" class="form-button">Login</button>
+                <button type="submit" class="form-button" id="loginBtn">
+                    <span class="spinner"></span>
+                    <span class="btn-text">Login</span>
+                </button>
                 
                 <div class="divider">
                     <span>or</span>
@@ -260,5 +309,83 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
             </form>
         </div>
     </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('loginForm');
+        const loginBtn = document.getElementById('loginBtn');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        
+        if (form && loginBtn) {
+            form.addEventListener('submit', function(e) {
+                // Validate fields
+                if (!usernameInput.value.trim()) {
+                    e.preventDefault();
+                    showError('Please enter your username.');
+                    return false;
+                }
+                
+                if (!passwordInput.value.trim()) {
+                    e.preventDefault();
+                    showError('Please enter your password.');
+                    return false;
+                }
+                
+                // Show loading state
+                loginBtn.classList.add('loading');
+                loginBtn.disabled = true;
+                
+                // The form will submit normally
+                return true;
+            });
+        }
+        
+        function showError(message) {
+            // Remove any existing error message
+            const existingError = document.querySelector('.error-message:not(.success-message)');
+            if (existingError && !existingError.classList.contains('success-message')) {
+                existingError.remove();
+            }
+            
+            // Create new error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.innerHTML = message;
+            
+            // Insert after the form title
+            const title = document.querySelector('.login-title');
+            title.insertAdjacentElement('afterend', errorDiv);
+            
+            // Remove after 5 seconds
+            setTimeout(function() {
+                errorDiv.remove();
+            }, 5000);
+        }
+        
+        // Reset loading state if user navigates back
+        window.addEventListener('pageshow', function() {
+            if (loginBtn) {
+                loginBtn.classList.remove('loading');
+                loginBtn.disabled = false;
+            }
+        });
+        
+        // Remove error message when user starts typing
+        if (usernameInput) {
+            usernameInput.addEventListener('focus', function() {
+                const error = document.querySelector('.error-message:not(.success-message)');
+                if (error) error.remove();
+            });
+        }
+        
+        if (passwordInput) {
+            passwordInput.addEventListener('focus', function() {
+                const error = document.querySelector('.error-message:not(.success-message)');
+                if (error) error.remove();
+            });
+        }
+    });
+    </script>
 </body>
 </html>
