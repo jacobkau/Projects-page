@@ -39,7 +39,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         .container {
-            max-width: 2400px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         
@@ -72,8 +72,8 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         .stats-grid {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 20px;
+            margin-bottom: 40px;
         }
         
         .stat-card {
