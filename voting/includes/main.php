@@ -155,7 +155,9 @@ $currentPage = isset($_GET['page']) ? $_GET['page'] : 'home';
               <li><a href="main.php?page=posts" <?php if ($currentPage === 'posts') echo 'class="active"'; ?>><i class="fas fa-clipboard-list"></i> Manage Posts</a></li>
               <li><a href="main.php?page=settings" <?php if ($currentPage === 'settings') echo 'class="active"'; ?>><i class="fas fa-cogs"></i> Voting Settings</a></li>
               <li><a href="main.php?page=results" <?php if ($currentPage === 'results') echo 'class="active"'; ?>><i class="fas fa-chart-bar"></i> View Results</a></li>
-               <li><a href="main.php?page=profile" <?php if ($currentPage === 'profile') echo 'class="active"'; ?>><i class="fas fa-user-cog"></i>Profile settings</a></li>
+            <li><a href="main.php?page=profile" <?php if ($currentPage === 'profile') echo 'class="active"'; ?>><i class="fas fa-user-cog"></i>Profile settings</a></li>
+                <br>
+            <li><a style="color:red;font-weight:500" href="main.php?page=refreshvotes" <?php if ($currentPage === 'refreshvotes') echo 'class="active"'; ?>><i class="fas fa-tachometer-alt"></i> Refresh Vote</a></li>
             </ul>
         </aside>
         <main>
@@ -187,6 +189,9 @@ switch ($page) {
      case 'profile':
         include("admin_settings.php");
         break;    
+    case 'refreshdb':
+        include("refreshdb.php");
+        break;
     case 'home':
     default:
         include("admin.php");
