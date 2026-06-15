@@ -1,6 +1,8 @@
 <?php
 // footer.php - Common footer for all pages
 ?>
+    </div> <!-- Close main-content div -->
+    
     <footer style="background: rgba(0,0,0,0.2); padding: 20px 0; text-align: center; color: white; margin-top: 40px; backdrop-filter: blur(10px);">
         <div>
             <ul style="display: flex; flex-wrap: wrap; justify-content: center; list-style: none; padding: 0; margin: 0 0 10px 0;">
@@ -16,5 +18,15 @@
             <i class="fas fa-shield-alt"></i> Secure Voting Platform
         </div>
     </footer>
+    
+    <script>
+        // Apply theme to all dynamic content
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('voting_theme');
+            if (savedTheme && !document.body.classList.contains(savedTheme + '-theme')) {
+                document.body.classList.add(savedTheme + '-theme');
+            }
+        });
+    </script>
 </body>
 </html>
