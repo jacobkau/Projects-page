@@ -1,8 +1,9 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 include("conn.php");
 
-// Admin Authentication
 if (!isset($_SESSION['admin_id'])) {
     header("Location: admin_login.php");
     exit();
@@ -213,7 +214,7 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin | Manage Votes</title>
+    <title>Admin | Refresh / Reset Votes</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -226,39 +227,29 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
         
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 30px;
+            background: #f4f7f9;
         }
         
-        .container {
+        .refresh-container {
             max-width: 1400px;
             margin: 0 auto;
         }
         
         /* Header */
-        .header {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
+        .page-header {
             margin-bottom: 30px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            text-align: center;
         }
         
-        .header h1 {
-            font-size: 32px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        .page-header h2 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1f2937;
             margin-bottom: 10px;
         }
         
-        .header p {
+        .page-header p {
             color: #6b7280;
-            font-size: 16px;
+            font-size: 14px;
         }
         
         /* Message */
@@ -293,7 +284,8 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             border-radius: 16px;
             padding: 25px;
             margin-bottom: 30px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
         }
         
         .election-selector label {
@@ -335,7 +327,8 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             border-radius: 16px;
             padding: 20px;
             text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
         }
         
         .stat-card.warning {
@@ -404,14 +397,8 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             transform: translateY(-2px);
         }
         
-        .btn-secondary {
-            background: #6b7280;
-            color: white;
-        }
-        
-        .btn-secondary:hover {
-            background: #4b5563;
-            transform: translateY(-2px);
+        .confirm-checkbox {
+            margin-left: 10px;
         }
         
         /* Votes Table */
@@ -419,7 +406,15 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             background: white;
             border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .votes-table-container h3 {
+            padding: 20px 20px 0 20px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
         }
         
         .votes-table {
@@ -428,12 +423,12 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
         }
         
         .votes-table th {
-            background: #f3f4f6;
+            background: #f9fafb;
             padding: 15px;
             text-align: left;
             font-weight: 600;
             color: #374151;
-            border-bottom: 2px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
         }
         
         .votes-table td {
@@ -458,10 +453,6 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
         
         .delete-vote-btn:hover {
             background: #b91c1c;
-        }
-        
-        .confirm-checkbox {
-            margin-left: 10px;
         }
         
         .badge {
@@ -494,10 +485,6 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
         }
         
         @media (max-width: 768px) {
-            body {
-                padding: 15px;
-            }
-            
             .stats-grid {
                 flex-direction: column;
             }
@@ -518,20 +505,51 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             .votes-table td {
                 padding: 8px 10px;
             }
+            
+            .votes-table-container {
+                overflow-x: auto;
+            }
         }
     </style>
+    <script>
+        function updateElection() {
+            const electionId = document.getElementById('electionSelect').value;
+            if (electionId) {
+                window.location.href = 'main.php?page=refreshdb&election_id=' + electionId;
+            } else {
+                window.location.href = 'main.php?page=refreshdb';
+            }
+        }
+        
+        function confirmReset() {
+            const confirmCheckbox = document.getElementById('confirmReset');
+            if (!confirmCheckbox.checked) {
+                alert('Please confirm that you want to reset this election by checking the "I confirm reset" checkbox.');
+                return false;
+            }
+            return confirm('⚠️ WARNING: This will DELETE ALL VOTES and reset candidate vote counts to 0. This action cannot be undone! Are you absolutely sure?');
+        }
+        
+        function confirmDeleteAll() {
+            return confirm('⚠️ WARNING: This will delete ALL votes for this election. This action cannot be undone! Are you sure?');
+        }
+        
+        function confirmDeleteSingle() {
+            return confirm('Delete this vote? This action cannot be undone.');
+        }
+    </script>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1><i class="fas fa-vote-yea"></i> Manage Votes</h1>
-            <p>Delete or reset votes for elections</p>
+    <div class="refresh-container">
+        <div class="page-header">
+            <h2><i class="fas fa-sync-alt"></i> Refresh / Reset Votes</h2>
+            <p>Manage and reset votes for elections. Use this page when you need to re-run an election.</p>
         </div>
         
         <!-- Election Selector -->
         <div class="election-selector">
             <label for="electionSelect"><i class="fas fa-calendar-alt"></i> Select Election:</label>
-            <select id="electionSelect" onchange="window.location.href='refreshdb.php?election_id=' + this.value;">
+            <select id="electionSelect" onchange="updateElection();">
                 <option value="">-- Select Election --</option>
                 <?php foreach ($elections as $election): ?>
                     <option value="<?php echo $election['id']; ?>" <?php echo ($selectedElection && $selectedElection['id'] == $election['id']) ? 'selected' : ''; ?>>
@@ -575,7 +593,7 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             
             <!-- Action Buttons -->
             <div class="action-buttons">
-                <form method="post" style="display: inline-block;" onsubmit="return confirm('⚠️ WARNING: This will delete ALL votes for this election. This action cannot be undone! Are you sure?')">
+                <form method="post" style="display: inline-block;" onsubmit="return confirmDeleteAll()">
                     <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
                     <button type="submit" name="delete_all_votes" class="btn btn-danger">
                         <i class="fas fa-trash-alt"></i> Delete All Votes
@@ -584,11 +602,11 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                 
                 <form method="post" style="display: inline-block;" id="resetForm" onsubmit="return confirmReset()">
                     <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
-                    <label style="display: inline-flex; align-items: center; margin-left: 15px;">
+                    <label style="display: inline-flex; align-items: center; margin-left: 0; margin-right: 15px;">
                         <input type="checkbox" name="confirm_reset" value="yes" id="confirmReset">
                         <span style="margin-left: 5px; font-size: 12px;">I confirm reset</span>
                     </label>
-                    <label style="display: inline-flex; align-items: center; margin-left: 15px;">
+                    <label style="display: inline-flex; align-items: center; margin-right: 15px;">
                         <input type="checkbox" name="reset_status" value="yes" checked>
                         <span style="margin-left: 5px; font-size: 12px;">Set status to 'Upcoming'</span>
                     </label>
@@ -600,10 +618,7 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             
             <!-- Votes List -->
             <div class="votes-table-container">
-                <h3 style="padding: 20px 20px 0 20px;">
-                    <i class="fas fa-list"></i> All Votes Cast
-                    <span style="font-size: 14px; font-weight: normal; color: #6b7280;">(Click Delete to remove individual votes)</span>
-                </h3>
+                <h3><i class="fas fa-list"></i> All Votes Cast <span style="font-size: 14px; font-weight: normal; color: #6b7280;">(Click Delete to remove individual votes)</span></h3>
                 <?php
                 // Fetch all votes for this election
                 $votesListStmt = $conn->prepare("
@@ -623,38 +638,40 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                         <p>No votes have been cast for this election yet.</p>
                     </div>
                 <?php else: ?>
-                    <table class="votes-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Voter</th>
-                                <th>Position</th>
-                                <th>Candidate Voted</th>
-                                <th>Voted At</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($votesList as $vote): ?>
+                    <div style="overflow-x: auto;">
+                        <table class="votes-table">
+                            <thead>
                                 <tr>
-                                    <td><?php echo $vote['id']; ?></td>
-                                    <td><?php echo htmlspecialchars($vote['voter_name'] ?? $vote['username']); ?></td>
-                                    <td><?php echo htmlspecialchars($vote['postname']); ?></td>
-                                    <td><?php echo htmlspecialchars($vote['candidate_name']); ?></td>
-                                    <td><?php echo date('M d, Y H:i', strtotime($vote['voted_at'])); ?></td>
-                                    <td>
-                                        <form method="post" onsubmit="return confirm('Delete this vote?')">
-                                            <input type="hidden" name="vote_id" value="<?php echo $vote['id']; ?>">
-                                            <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
-                                            <button type="submit" name="delete_single_vote" class="delete-vote-btn">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
-                                        </form>
-                                    </td>
+                                    <th>ID</th>
+                                    <th>Voter</th>
+                                    <th>Position</th>
+                                    <th>Candidate Voted</th>
+                                    <th>Voted At</th>
+                                    <th>Action</th>
                                 </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($votesList as $vote): ?>
+                                    <tr>
+                                        <td><?php echo $vote['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($vote['voter_name'] ?? $vote['username']); ?></td>
+                                        <td><?php echo htmlspecialchars($vote['postname']); ?></td>
+                                        <td><?php echo htmlspecialchars($vote['candidate_name']); ?></td>
+                                        <td><?php echo date('M d, Y H:i', strtotime($vote['voted_at'])); ?></td>
+                                        <td>
+                                            <form method="post" onsubmit="return confirmDeleteSingle()">
+                                                <input type="hidden" name="vote_id" value="<?php echo $vote['id']; ?>">
+                                                <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
+                                                <button type="submit" name="delete_single_vote" class="delete-vote-btn">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php endif; ?>
             </div>
         <?php elseif (isset($_GET['election_id']) && !$selectedElection): ?>
@@ -674,16 +691,5 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             </div>
         <?php endif; ?>
     </div>
-    
-    <script>
-        function confirmReset() {
-            const confirmCheckbox = document.getElementById('confirmReset');
-            if (!confirmCheckbox.checked) {
-                alert('Please confirm that you want to reset this election by checking the "I confirm reset" checkbox.');
-                return false;
-            }
-            return confirm('⚠️ WARNING: This will DELETE ALL VOTES and reset candidate vote counts to 0. This action cannot be undone! Are you absolutely sure?');
-        }
-    </script>
 </body>
 </html>
