@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 include("conn.php");
 
+// Admin Authentication
 if (!isset($_SESSION['admin_id'])) {
     header("Location: admin_login.php");
     exit();
@@ -40,21 +41,22 @@ if (isset($_GET['election_id'])) {
         $voteStats->execute([$electionId]);
         $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
         
-        // Get votes per position
-        $positionStmt = $conn->prepare("
-            SELECT postname, COUNT(*) as vote_count 
-            FROM votes 
-            WHERE election_id = ? 
-            GROUP BY postname 
-            ORDER BY vote_count DESC
-        ");
-        $positionStmt->execute([$electionId]);
-        $positionStats = $positionStmt->fetchAll(PDO::FETCH_ASSOC);
+        // Get contesters/candidates count
+        $contesterStats = $conn->prepare("SELECT COUNT(*) as total_candidates FROM contesters WHERE election_id = ?");
+        $contesterStats->execute([$electionId]);
+        $contesterCount = $contesterStats->fetch(PDO::FETCH_ASSOC);
+        $electionStats['total_candidates'] = $contesterCount['total_candidates'];
+        
+        // Get user registrations count
+        $regStats = $conn->prepare("SELECT COUNT(*) as total_registered FROM user_elections WHERE election_id = ?");
+        $regStats->execute([$electionId]);
+        $regCount = $regStats->fetch(PDO::FETCH_ASSOC);
+        $electionStats['total_registered'] = $regCount['total_registered'];
     }
 }
 
-// Handle Delete All Votes for Election
-if (isset($_POST['delete_all_votes'])) {
+// Option 1: Delete Only Votes (Keep candidates, posts, registrations)
+if (isset($_POST['delete_only_votes'])) {
     $electionId = intval($_POST['election_id']);
     
     try {
@@ -69,28 +71,28 @@ if (isset($_POST['delete_all_votes'])) {
         $deleteStmt = $conn->prepare("DELETE FROM votes WHERE election_id = ?");
         $deleteStmt->execute([$electionId]);
         
-        // Reset vote counts in contesters table
+        // Reset vote counts in contesters table to 0
         $resetStmt = $conn->prepare("UPDATE contesters SET votes = 0 WHERE election_id = ?");
         $resetStmt->execute([$electionId]);
         
         // Log the action
         $logStmt = $conn->prepare("
             INSERT INTO event_log (username, event_type, event_description) 
-            VALUES (?, 'Delete Votes', ?)
+            VALUES (?, 'Delete Only Votes', ?)
         ");
-        $logStmt->execute([$_SESSION['username'], "Deleted all {$voteCount['count']} votes for election ID: $electionId"]);
+        $logStmt->execute([$_SESSION['username'], "Deleted only votes for election ID: $electionId. Deleted {$voteCount['count']} votes, kept candidates."]);
         
         $conn->commit();
         
-        $message = "Successfully deleted {$voteCount['count']} votes from this election. Vote counts have been reset.";
+        $message = "Successfully deleted {$voteCount['count']} votes. Candidates and registrations remain intact.";
         $messageType = "success";
         
         // Refresh stats
-        if ($selectedElection) {
-            $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
-            $voteStats->execute([$electionId]);
-            $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
-        }
+        $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
+        $voteStats->execute([$electionId]);
+        $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
+        $electionStats['total_candidates'] = $contesterCount['total_candidates'];
+        $electionStats['total_registered'] = $regCount['total_registered'];
         
     } catch (PDOException $e) {
         $conn->rollBack();
@@ -99,70 +101,133 @@ if (isset($_POST['delete_all_votes'])) {
     }
 }
 
-// Handle Reset Election (Complete Reset - Votes and Candidate Votes)
-if (isset($_POST['reset_election'])) {
+// Option 2: Delete Votes AND Candidates (Keep election structure)
+if (isset($_POST['delete_votes_and_candidates'])) {
     $electionId = intval($_POST['election_id']);
     
-    if (!isset($_POST['confirm_reset']) || $_POST['confirm_reset'] !== 'yes') {
-        $message = "Please confirm election reset by checking the confirmation box.";
+    if (!isset($_POST['confirm_delete']) || $_POST['confirm_delete'] !== 'yes') {
+        $message = "Please confirm deletion by checking the confirmation box.";
         $messageType = "error";
     } else {
         try {
             $conn->beginTransaction();
             
-            // Get vote count before deletion
+            // Get counts before deletion
             $countStmt = $conn->prepare("SELECT COUNT(*) as count FROM votes WHERE election_id = ?");
             $countStmt->execute([$electionId]);
             $voteCount = $countStmt->fetch(PDO::FETCH_ASSOC);
             
-            // Delete all votes
-            $deleteStmt = $conn->prepare("DELETE FROM votes WHERE election_id = ?");
-            $deleteStmt->execute([$electionId]);
+            $candidateStmt = $conn->prepare("SELECT COUNT(*) as count FROM contesters WHERE election_id = ?");
+            $candidateStmt->execute([$electionId]);
+            $candidateCount = $candidateStmt->fetch(PDO::FETCH_ASSOC);
             
-            // Reset contesters vote counts to 0
-            $resetContesters = $conn->prepare("UPDATE contesters SET votes = 0 WHERE election_id = ?");
-            $resetContesters->execute([$electionId]);
+            // Delete votes
+            $deleteVotes = $conn->prepare("DELETE FROM votes WHERE election_id = ?");
+            $deleteVotes->execute([$electionId]);
             
-            // Optionally: Set election status back to 'upcoming' for re-election
-            if (isset($_POST['reset_status'])) {
-                $updateStatus = $conn->prepare("UPDATE elections SET status = 'upcoming' WHERE id = ?");
-                $updateStatus->execute([$electionId]);
-            }
+            // Delete contesters/candidates
+            $deleteCandidates = $conn->prepare("DELETE FROM contesters WHERE election_id = ?");
+            $deleteCandidates->execute([$electionId]);
             
             // Log the action
             $logStmt = $conn->prepare("
                 INSERT INTO event_log (username, event_type, event_description) 
-                VALUES (?, 'Reset Election', ?)
+                VALUES (?, 'Delete Votes & Candidates', ?)
             ");
-            $logStmt->execute([$_SESSION['username'], "Reset election ID: $electionId. Deleted {$voteCount['count']} votes and reset candidate votes."]);
+            $logStmt->execute([$_SESSION['username'], "Deleted {$voteCount['count']} votes and {$candidateCount['count']} candidates for election ID: $electionId"]);
             
             $conn->commit();
             
-            $message = "Election has been reset successfully! All votes have been cleared and candidate vote counts reset to 0.";
+            $message = "Successfully deleted {$voteCount['count']} votes and {$candidateCount['count']} candidates.";
             $messageType = "success";
             
             // Refresh stats
-            if ($selectedElection) {
-                $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
-                $voteStats->execute([$electionId]);
-                $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
-            }
+            $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
+            $voteStats->execute([$electionId]);
+            $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
+            
+            $contesterStats = $conn->prepare("SELECT COUNT(*) as total_candidates FROM contesters WHERE election_id = ?");
+            $contesterStats->execute([$electionId]);
+            $electionStats['total_candidates'] = $contesterStats->fetch(PDO::FETCH_ASSOC)['total_candidates'];
             
         } catch (PDOException $e) {
             $conn->rollBack();
-            $message = "Error resetting election: " . $e->getMessage();
+            $message = "Error: " . $e->getMessage();
             $messageType = "error";
         }
     }
 }
 
-// Handle Delete Single Vote
+// Option 3: Complete Reset (Delete everything - votes, candidates, registrations, posts)
+if (isset($_POST['complete_reset'])) {
+    $electionId = intval($_POST['election_id']);
+    
+    if (!isset($_POST['confirm_complete']) || $_POST['confirm_complete'] !== 'yes') {
+        $message = "Please confirm complete reset by checking the confirmation box.";
+        $messageType = "error";
+    } else {
+        try {
+            $conn->beginTransaction();
+            
+            // Get counts before deletion
+            $voteStmt = $conn->prepare("SELECT COUNT(*) as count FROM votes WHERE election_id = ?");
+            $voteStmt->execute([$electionId]);
+            $voteCount = $voteStmt->fetch(PDO::FETCH_ASSOC);
+            
+            $candidateStmt = $conn->prepare("SELECT COUNT(*) as count FROM contesters WHERE election_id = ?");
+            $candidateStmt->execute([$electionId]);
+            $candidateCount = $candidateStmt->fetch(PDO::FETCH_ASSOC);
+            
+            $regStmt = $conn->prepare("SELECT COUNT(*) as count FROM user_elections WHERE election_id = ?");
+            $regStmt->execute([$electionId]);
+            $regCount = $regStmt->fetch(PDO::FETCH_ASSOC);
+            
+            $postStmt = $conn->prepare("SELECT COUNT(*) as count FROM election_posts WHERE election_id = ?");
+            $postStmt->execute([$electionId]);
+            $postCount = $postStmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Delete all related data
+            $conn->prepare("DELETE FROM votes WHERE election_id = ?")->execute([$electionId]);
+            $conn->prepare("DELETE FROM contesters WHERE election_id = ?")->execute([$electionId]);
+            $conn->prepare("DELETE FROM user_elections WHERE election_id = ?")->execute([$electionId]);
+            $conn->prepare("DELETE FROM election_posts WHERE election_id = ?")->execute([$electionId]);
+            
+            // Optionally reset election status to 'upcoming'
+            if (isset($_POST['reset_status'])) {
+                $conn->prepare("UPDATE elections SET status = 'upcoming' WHERE id = ?")->execute([$electionId]);
+            }
+            
+            // Log the action
+            $logStmt = $conn->prepare("
+                INSERT INTO event_log (username, event_type, event_description) 
+                VALUES (?, 'Complete Reset', ?)
+            ");
+            $logStmt->execute([$_SESSION['username'], "Complete reset for election ID: $electionId. Deleted {$voteCount['count']} votes, {$candidateCount['count']} candidates, {$regCount['count']} registrations, {$postCount['count']} posts."]);
+            
+            $conn->commit();
+            
+            $message = "Complete reset successful! Deleted votes, candidates, registrations, and posts.";
+            $messageType = "success";
+            
+            // Refresh stats
+            $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
+            $voteStats->execute([$electionId]);
+            $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
+            
+        } catch (PDOException $e) {
+            $conn->rollBack();
+            $message = "Error: " . $e->getMessage();
+            $messageType = "error";
+        }
+    }
+}
+
+// Delete Single Vote
 if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
     $voteId = intval($_POST['vote_id']);
     $electionId = intval($_POST['election_id']);
     
     try {
-        // Get vote details before deletion
         $getVoteStmt = $conn->prepare("SELECT * FROM votes WHERE id = ?");
         $getVoteStmt->execute([$voteId]);
         $vote = $getVoteStmt->fetch(PDO::FETCH_ASSOC);
@@ -170,11 +235,8 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
         if ($vote) {
             $conn->beginTransaction();
             
-            // Delete the vote
-            $deleteStmt = $conn->prepare("DELETE FROM votes WHERE id = ?");
-            $deleteStmt->execute([$voteId]);
+            $conn->prepare("DELETE FROM votes WHERE id = ?")->execute([$voteId]);
             
-            // Decrement vote count in contesters table
             $updateContester = $conn->prepare("
                 UPDATE contesters 
                 SET votes = votes - 1 
@@ -182,29 +244,19 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
             ");
             $updateContester->execute([$vote['candidate_name'], $vote['election_id'], $vote['postname']]);
             
-            // Log the action
             $logStmt = $conn->prepare("
                 INSERT INTO event_log (username, event_type, event_description) 
                 VALUES (?, 'Delete Single Vote', ?)
             ");
-            $logStmt->execute([$_SESSION['username'], "Deleted vote ID: $voteId for candidate: {$vote['candidate_name']}"]);
+            $logStmt->execute([$_SESSION['username'], "Deleted vote ID: $voteId"]);
             
             $conn->commit();
-            
             $message = "Vote deleted successfully!";
             $messageType = "success";
-            
-            // Refresh stats
-            $voteStats = $conn->prepare("SELECT COUNT(*) as total_votes FROM votes WHERE election_id = ?");
-            $voteStats->execute([$electionId]);
-            $electionStats = $voteStats->fetch(PDO::FETCH_ASSOC);
-        } else {
-            $message = "Vote not found.";
-            $messageType = "error";
         }
     } catch (PDOException $e) {
         $conn->rollBack();
-        $message = "Error deleting vote: " . $e->getMessage();
+        $message = "Error: " . $e->getMessage();
         $messageType = "error";
     }
 }
@@ -219,296 +271,61 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f4f7f9; }
+        .refresh-container { max-width: 1400px; margin: 0 auto; }
         
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #f4f7f9;
-        }
+        .page-header { margin-bottom: 30px; }
+        .page-header h2 { font-size: 28px; font-weight: 700; color: #1f2937; margin-bottom: 10px; }
+        .page-header p { color: #6b7280; font-size: 14px; }
         
-        .refresh-container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
+        .message { padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        .message.success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+        .message.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
+        .message.warning { background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b; }
         
-        /* Header */
-        .page-header {
-            margin-bottom: 30px;
-        }
+        .election-selector { background: white; border-radius: 16px; padding: 25px; margin-bottom: 30px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
+        .election-selector label { display: block; font-weight: 600; color: #374151; margin-bottom: 10px; font-size: 14px; }
+        .election-selector select { width: 100%; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 12px; font-size: 16px; transition: all 0.3s; }
+        .election-selector select:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
         
-        .page-header h2 {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 10px;
-        }
+        .stats-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
+        .stat-card { flex: 1; min-width: 180px; background: white; border-radius: 16px; padding: 20px; text-align: center; border: 1px solid #e5e7eb; }
+        .stat-card.warning { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+        .stat-card.danger { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
+        .stat-icon { font-size: 40px; margin-bottom: 10px; }
+        .stat-value { font-size: 36px; font-weight: 800; color: #1f2937; }
+        .stat-label { font-size: 14px; color: #6b7280; margin-top: 5px; }
         
-        .page-header p {
-            color: #6b7280;
-            font-size: 14px;
-        }
+        .action-buttons { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
+        .action-group { background: white; border-radius: 16px; padding: 20px; border: 1px solid #e5e7eb; flex: 1; min-width: 250px; }
+        .action-group h4 { margin-bottom: 15px; font-size: 16px; font-weight: 700; }
+        .action-group p { font-size: 13px; color: #6b7280; margin-bottom: 15px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; transform: translateY(-2px); }
+        .btn-warning { background: #f59e0b; color: white; }
+        .btn-warning:hover { background: #d97706; transform: translateY(-2px); }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; transform: translateY(-2px); }
+        .btn-secondary { background: #6b7280; color: white; }
         
-        /* Message */
-        .message {
-            padding: 15px 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .confirm-checkbox { margin-left: 10px; display: inline-flex; align-items: center; gap: 5px; }
         
-        .message.success {
-            background: #d1fae5;
-            color: #065f46;
-            border-left: 4px solid #10b981;
-        }
-        
-        .message.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border-left: 4px solid #dc2626;
-        }
-        
-        .message i {
-            font-size: 20px;
-        }
-        
-        /* Election Selector */
-        .election-selector {
-            background: white;
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 30px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border: 1px solid #e5e7eb;
-        }
-        
-        .election-selector label {
-            display: block;
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        
-        .election-selector select {
-            width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
-            font-size: 16px;
-            font-family: 'Inter', sans-serif;
-            transition: all 0.3s;
-        }
-        
-        .election-selector select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
-        }
-        
-        /* Stats Cards */
-        .stats-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            flex: 1;
-            min-width: 200px;
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border: 1px solid #e5e7eb;
-        }
-        
-        .stat-card.warning {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-        }
-        
-        .stat-card.danger {
-            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-        }
-        
-        .stat-icon {
-            font-size: 40px;
-            margin-bottom: 10px;
-        }
-        
-        .stat-value {
-            font-size: 36px;
-            font-weight: 800;
-            color: #1f2937;
-        }
-        
-        .stat-label {
-            font-size: 14px;
-            color: #6b7280;
-            margin-top: 5px;
-        }
-        
-        /* Action Buttons */
-        .action-buttons {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-danger {
-            background: #dc2626;
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #b91c1c;
-            transform: translateY(-2px);
-        }
-        
-        .btn-warning {
-            background: #f59e0b;
-            color: white;
-        }
-        
-        .btn-warning:hover {
-            background: #d97706;
-            transform: translateY(-2px);
-        }
-        
-        .confirm-checkbox {
-            margin-left: 10px;
-        }
-        
-        /* Votes Table */
-        .votes-table-container {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border: 1px solid #e5e7eb;
-        }
-        
-        .votes-table-container h3 {
-            padding: 20px 20px 0 20px;
-            font-size: 18px;
-            font-weight: 600;
-            color: #1f2937;
-        }
-        
-        .votes-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .votes-table th {
-            background: #f9fafb;
-            padding: 15px;
-            text-align: left;
-            font-weight: 600;
-            color: #374151;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        
-        .votes-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        
-        .votes-table tr:hover {
-            background: #f9fafb;
-        }
-        
-        .delete-vote-btn {
-            background: #dc2626;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.3s;
-        }
-        
-        .delete-vote-btn:hover {
-            background: #b91c1c;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-active {
-            background: #10b981;
-            color: white;
-        }
-        
-        .badge-upcoming {
-            background: #f59e0b;
-            color: white;
-        }
-        
-        .badge-completed {
-            background: #6b7280;
-            color: white;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px;
-            color: #9ca3af;
-        }
+        .votes-table-container { background: white; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; }
+        .votes-table-container h3 { padding: 20px; font-size: 18px; font-weight: 600; }
+        .votes-table { width: 100%; border-collapse: collapse; }
+        .votes-table th { background: #f9fafb; padding: 12px 15px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        .votes-table td { padding: 10px 15px; border-bottom: 1px solid #e5e7eb; }
+        .delete-vote-btn { background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .empty-state { text-align: center; padding: 60px; color: #9ca3af; }
         
         @media (max-width: 768px) {
-            .stats-grid {
-                flex-direction: column;
-            }
-            
-            .action-buttons {
-                flex-direction: column;
-            }
-            
-            .btn {
-                justify-content: center;
-            }
-            
-            .votes-table {
-                font-size: 12px;
-            }
-            
-            .votes-table th,
-            .votes-table td {
-                padding: 8px 10px;
-            }
-            
-            .votes-table-container {
-                overflow-x: auto;
-            }
+            .stats-grid { flex-direction: column; }
+            .action-buttons { flex-direction: column; }
+            .btn { justify-content: center; }
+            .votes-table { font-size: 12px; }
+            .votes-table-container { overflow-x: auto; }
         }
     </style>
     <script>
@@ -520,30 +337,13 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                 window.location.href = 'main.php?page=refreshdb';
             }
         }
-        
-        function confirmReset() {
-            const confirmCheckbox = document.getElementById('confirmReset');
-            if (!confirmCheckbox.checked) {
-                alert('Please confirm that you want to reset this election by checking the "I confirm reset" checkbox.');
-                return false;
-            }
-            return confirm('⚠️ WARNING: This will DELETE ALL VOTES and reset candidate vote counts to 0. This action cannot be undone! Are you absolutely sure?');
-        }
-        
-        function confirmDeleteAll() {
-            return confirm('⚠️ WARNING: This will delete ALL votes for this election. This action cannot be undone! Are you sure?');
-        }
-        
-        function confirmDeleteSingle() {
-            return confirm('Delete this vote? This action cannot be undone.');
-        }
     </script>
 </head>
 <body>
     <div class="refresh-container">
         <div class="page-header">
-            <h2><i class="fas fa-sync-alt"></i> Refresh / Reset Votes</h2>
-            <p>Manage and reset votes for elections. Use this page when you need to re-run an election.</p>
+            <h2><i class="fas fa-sync-alt"></i> Refresh / Reset Election Data</h2>
+            <p>Select what data you want to delete for the election</p>
         </div>
         
         <!-- Election Selector -->
@@ -572,55 +372,80 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fas fa-chart-bar"></i></div>
                     <div class="stat-value"><?php echo number_format($electionStats['total_votes'] ?? 0); ?></div>
-                    <div class="stat-label">Total Votes Cast</div>
+                    <div class="stat-label">Total Votes</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fas fa-users"></i></div>
                     <div class="stat-value"><?php echo number_format($electionStats['unique_voters'] ?? 0); ?></div>
-                    <div class="stat-label">Unique Voters</div>
+                    <div class="stat-label">Voters</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon"><i class="fas fa-tasks"></i></div>
-                    <div class="stat-value"><?php echo number_format($electionStats['total_positions'] ?? 0); ?></div>
-                    <div class="stat-label">Positions Voted</div>
+                    <div class="stat-icon"><i class="fas fa-user-tie"></i></div>
+                    <div class="stat-value"><?php echo number_format($electionStats['total_candidates'] ?? 0); ?></div>
+                    <div class="stat-label">Candidates</div>
                 </div>
-                <div class="stat-card warning">
-                    <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                    <div class="stat-value"><?php echo number_format($electionStats['total_votes'] ?? 0); ?></div>
-                    <div class="stat-label">Votes to Delete</div>
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-registered"></i></div>
+                    <div class="stat-value"><?php echo number_format($electionStats['total_registered'] ?? 0); ?></div>
+                    <div class="stat-label">Registered Voters</div>
                 </div>
             </div>
             
-            <!-- Action Buttons -->
+            <!-- Action Options -->
             <div class="action-buttons">
-                <form method="post" style="display: inline-block;" onsubmit="return confirmDeleteAll()">
-                    <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
-                    <button type="submit" name="delete_all_votes" class="btn btn-danger">
-                        <i class="fas fa-trash-alt"></i> Delete All Votes
-                    </button>
-                </form>
+                <!-- Option 1: Delete Only Votes -->
+                <div class="action-group">
+                    <h4><i class="fas fa-trash-alt"></i> Option 1: Delete Only Votes</h4>
+                    <p>Keep all candidates, user registrations, and election posts. Only remove cast votes.</p>
+                    <form method="post" onsubmit="return confirm('Delete ONLY votes? Candidates will remain.')">
+                        <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
+                        <button type="submit" name="delete_only_votes" class="btn btn-warning">
+                            <i class="fas fa-trash"></i> Delete Only Votes (<?php echo $electionStats['total_votes']; ?> votes)
+                        </button>
+                    </form>
+                </div>
                 
-                <form method="post" style="display: inline-block;" id="resetForm" onsubmit="return confirmReset()">
-                    <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
-                    <label style="display: inline-flex; align-items: center; margin-left: 0; margin-right: 15px;">
-                        <input type="checkbox" name="confirm_reset" value="yes" id="confirmReset">
-                        <span style="margin-left: 5px; font-size: 12px;">I confirm reset</span>
-                    </label>
-                    <label style="display: inline-flex; align-items: center; margin-right: 15px;">
-                        <input type="checkbox" name="reset_status" value="yes" checked>
-                        <span style="margin-left: 5px; font-size: 12px;">Set status to 'Upcoming'</span>
-                    </label>
-                    <button type="submit" name="reset_election" class="btn btn-warning">
-                        <i class="fas fa-sync-alt"></i> Reset Election for Re-Vote
-                    </button>
-                </form>
+                <!-- Option 2: Delete Votes & Candidates -->
+                <div class="action-group">
+                    <h4><i class="fas fa-trash-alt"></i> Option 2: Delete Votes & Candidates</h4>
+                    <p>Remove all votes and candidates. Keep election posts and user registrations.</p>
+                    <form method="post" onsubmit="return confirm('Delete votes AND candidates? This cannot be undone!')">
+                        <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
+                        <label class="confirm-checkbox">
+                            <input type="checkbox" name="confirm_delete" value="yes" required>
+                            <span>I confirm</span>
+                        </label>
+                        <button type="submit" name="delete_votes_and_candidates" class="btn btn-danger">
+                            <i class="fas fa-trash-alt"></i> Delete Votes & Candidates
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Option 3: Complete Reset -->
+                <div class="action-group">
+                    <h4><i class="fas fa-sync-alt"></i> Option 3: Complete Reset</h4>
+                    <p>Delete EVERYTHING: votes, candidates, registrations, and election posts.</p>
+                    <form method="post" onsubmit="return confirm('COMPLETE RESET: Delete all votes, candidates, registrations, and posts? This cannot be undone!')">
+                        <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
+                        <label class="confirm-checkbox">
+                            <input type="checkbox" name="confirm_complete" value="yes" required>
+                            <span>I confirm</span>
+                        </label>
+                        <label class="confirm-checkbox">
+                            <input type="checkbox" name="reset_status" value="yes" checked>
+                            <span>Set status to 'Upcoming'</span>
+                        </label>
+                        <button type="submit" name="complete_reset" class="btn btn-danger">
+                            <i class="fas fa-sync-alt"></i> Complete Reset
+                        </button>
+                    </form>
+                </div>
             </div>
             
             <!-- Votes List -->
             <div class="votes-table-container">
-                <h3><i class="fas fa-list"></i> All Votes Cast <span style="font-size: 14px; font-weight: normal; color: #6b7280;">(Click Delete to remove individual votes)</span></h3>
+                <h3><i class="fas fa-list"></i> All Votes Cast</h3>
                 <?php
-                // Fetch all votes for this election
                 $votesListStmt = $conn->prepare("
                     SELECT v.*, u.name as voter_name 
                     FROM votes v 
@@ -645,7 +470,7 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                                     <th>ID</th>
                                     <th>Voter</th>
                                     <th>Position</th>
-                                    <th>Candidate Voted</th>
+                                    <th>Candidate</th>
                                     <th>Voted At</th>
                                     <th>Action</th>
                                 </tr>
@@ -659,14 +484,14 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                                         <td><?php echo htmlspecialchars($vote['candidate_name']); ?></td>
                                         <td><?php echo date('M d, Y H:i', strtotime($vote['voted_at'])); ?></td>
                                         <td>
-                                            <form method="post" onsubmit="return confirmDeleteSingle()">
+                                            <form method="post" onsubmit="return confirm('Delete this vote?')">
                                                 <input type="hidden" name="vote_id" value="<?php echo $vote['id']; ?>">
                                                 <input type="hidden" name="election_id" value="<?php echo $selectedElection['id']; ?>">
                                                 <button type="submit" name="delete_single_vote" class="delete-vote-btn">
                                                     <i class="fas fa-trash"></i> Delete
                                                 </button>
                                             </form>
-                                        </td>
+                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -674,20 +499,15 @@ if (isset($_POST['delete_single_vote']) && isset($_POST['vote_id'])) {
                     </div>
                 <?php endif; ?>
             </div>
-        <?php elseif (isset($_GET['election_id']) && !$selectedElection): ?>
-            <div class="message error">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>Election not found. Please select a valid election.</span>
-            </div>
         <?php elseif (empty($elections)): ?>
             <div class="message error">
                 <i class="fas fa-info-circle"></i>
                 <span>No elections found. Please create an election first.</span>
             </div>
         <?php else: ?>
-            <div class="message" style="background: #e0e7ff; color: #3730a3;">
+            <div class="message warning">
                 <i class="fas fa-info-circle"></i>
-                <span>Please select an election from the dropdown above to manage its votes.</span>
+                <span>Please select an election from the dropdown above to manage its data.</span>
             </div>
         <?php endif; ?>
     </div>
