@@ -25,49 +25,20 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-            
-        .container {
-            max-width: 2000px;
-        }
-        
-        /* Header - First Row */
-        .header {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 32px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            color: #6b7280;
-            font-size: 16px;
-        }
-        
-        /* Stats Cards - Second Row (Flex) */
+    /* Stats Cards - Second Row (Flex) */
         .stats-grid {
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 40px;
+            border: 1px solid #333;
         }
         
         .stat-card {
             flex: 1;
             min-width: 200px;
             background: white;
-            border-radius: 16px;
+            border-radius: 16px;            
             padding: 25px 20px;
             text-align: center;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
@@ -113,6 +84,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         /* Elections List - Third Row */
         .elections-section {
             margin-top: 20px;
+            border: 1px solid #333;
         }
         
         .section-title {
@@ -439,11 +411,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
 </head>
 <body>
     <div class="container1">
-        <!-- First Row: Header -->
-        <div class="header">
-            <h1><i class="fas fa-chart-line"></i> Real-time election results and analytics</h1>
-        </div>
-        
+            
         <?php if (empty($elections)): ?>
             <div class="empty-state">
                 <i class="fas fa-vote-yea"></i>
@@ -451,7 +419,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         <?php else: ?>
             <!-- Second Row: Statistics Overview (Flex) -->
-            <div class="stats-grid">
+            <div class="stats-grid" style="border: 1px solid #333;">
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
                     <div class="stat-value"><?php echo count($elections); ?></div>
@@ -490,7 +458,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
             
             <!-- Third Row: Elections List -->
-            <div class="elections-section">
+            <div class="elections-section" style="border: 1px solid #333;">
                 <div class="section-title">
                     <h2><i class="fas fa-poll"></i> Elections Results</h2>
                     <p><b>Click on any election to view detailed results</b></p>
