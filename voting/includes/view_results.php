@@ -83,7 +83,6 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         /* Elections List - Third Row */
         .elections-section {
             margin-top: 20px;
-            border: 1px solid #333;
         }
         
         .section-title {
