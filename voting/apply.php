@@ -385,77 +385,6 @@ if ($selectedElectionId) {
             }
         }
     </style>
-    <script>
-    function fetchPosts(electionId) {
-        if (electionId === "") {
-            document.getElementById('postname').innerHTML = '<option value="">Select Election First</option>';
-            document.getElementById('postname').disabled = true;
-            return;
-        }
-        
-        // Show loading state for posts dropdown
-        const postSelect = document.getElementById('postname');
-        postSelect.innerHTML = '<option value="">Loading positions...</option>';
-        postSelect.disabled = true;
-        
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4) {
-                if (xhr.status == 200) {
-                    postSelect.innerHTML = xhr.responseText;
-                    postSelect.disabled = false;
-                } else {
-                    postSelect.innerHTML = '<option value="">Error loading positions</option>';
-                    postSelect.disabled = true;
-                }
-            }
-        };
-        xhr.open('GET', 'get_posts.php?election_id=' + electionId, true);
-        xhr.send();
-    }
-    
-    // Form submission with loading state
-    document.getElementById('applicationForm').addEventListener('submit', function(e) {
-        const submitBtn = document.getElementById('submitBtn');
-        const fileInput = document.getElementById('profile_photo');
-        
-        // Validate file is selected
-        if (!fileInput.files || !fileInput.files[0]) {
-            e.preventDefault();
-            alert('Please upload a profile photo.');
-            return false;
-        }
-        
-        // Show loading state
-        submitBtn.classList.add('loading');
-        submitBtn.disabled = true;
-        
-        // The form will submit normally, loading state prevents double submission
-        return true;
-    });
-    
-    // File validation
-    document.getElementById('profile_photo').addEventListener('change', function(e) {
-        var file = e.target.files[0];
-        if (file) {
-            var validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-            if (!validTypes.includes(file.type)) {
-                alert('Invalid file type. Only JPG, PNG, and GIF are allowed.');
-                this.value = '';
-            } else if (file.size > 2 * 1024 * 1024) {
-                alert('File is too large. Maximum size is 2MB.');
-                this.value = '';
-            }
-        }
-    });
-    
-    // Reset loading state if user navigates back
-    window.addEventListener('pageshow', function() {
-        const submitBtn = document.getElementById('submitBtn');
-        submitBtn.classList.remove('loading');
-        submitBtn.disabled = false;
-    });
-    </script>
 </head>
 <body>
     <header>
@@ -554,5 +483,95 @@ if ($selectedElectionId) {
             &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
         </div>
     </footer>
+
+    <script>
+    // Wait for DOM to fully load before attaching event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Function to fetch posts for an election
+        window.fetchPosts = function(electionId) {
+            const postSelect = document.getElementById('postname');
+            if (!postSelect) return;
+            
+            if (electionId === "") {
+                postSelect.innerHTML = '<option value="">Select Election First</option>';
+                postSelect.disabled = true;
+                return;
+            }
+            
+            // Show loading state for posts dropdown
+            postSelect.innerHTML = '<option value="">Loading positions...</option>';
+            postSelect.disabled = true;
+            
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4) {
+                    if (xhr.status == 200) {
+                        postSelect.innerHTML = xhr.responseText;
+                        postSelect.disabled = false;
+                    } else {
+                        postSelect.innerHTML = '<option value="">Error loading positions</option>';
+                        postSelect.disabled = true;
+                    }
+                }
+            };
+            xhr.open('GET', 'get_posts.php?election_id=' + electionId, true);
+            xhr.send();
+        };
+        
+        // Form submission with loading state
+        const form = document.getElementById('applicationForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const fileInput = document.getElementById('profile_photo');
+        
+        if (form && submitBtn) {
+            form.addEventListener('submit', function(e) {
+                // Validate file is selected
+                if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+                    e.preventDefault();
+                    alert('Please upload a profile photo.');
+                    return false;
+                }
+                
+                // Show loading state
+                submitBtn.classList.add('loading');
+                submitBtn.disabled = true;
+                
+                // The form will submit normally, loading state prevents double submission
+                return true;
+            });
+        }
+        
+        // File validation
+        if (fileInput) {
+            fileInput.addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (file) {
+                    var validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                    if (!validTypes.includes(file.type)) {
+                        alert('Invalid file type. Only JPG, PNG, and GIF are allowed.');
+                        this.value = '';
+                    } else if (file.size > 2 * 1024 * 1024) {
+                        alert('File is too large. Maximum size is 2MB.');
+                        this.value = '';
+                    }
+                }
+            });
+        }
+        
+        // Reset loading state if user navigates back
+        window.addEventListener('pageshow', function() {
+            if (submitBtn) {
+                submitBtn.classList.remove('loading');
+                submitBtn.disabled = false;
+            }
+        });
+        
+        // If election is pre-selected, load its posts
+        const electionSelect = document.getElementById('election_id');
+        if (electionSelect && electionSelect.value) {
+            fetchPosts(electionSelect.value);
+        }
+    });
+    </script>
 </body>
 </html>
