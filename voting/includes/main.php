@@ -1,8 +1,9 @@
 <?php
 include("conn.php");
 
-// Admin Authentication
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 if (!isset($_SESSION['admin_id'])) {
     header("Location: admin_login.php");
     exit();
@@ -284,7 +285,7 @@ $currentPage = isset($_GET['page']) ? $_GET['page'] : 'home';
 <body>
     <header>
         <div class="header-left">
-            <h1><i class="fas fa-vote-yea"></i> Voting System Admin</h1>
+            <h1><i class="fas fa-vote-yea"></i>Witty Voting System Admin</h1>
             <p>Manage your elections and voters</p>
         </div>
         
