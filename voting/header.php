@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // Get user info for display
 $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
+$isLoggedIn = isset($_SESSION['user_logged_in']) && $_SESSION['user_logged_in'] === true;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -20,7 +21,7 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
             min-height: 100vh;
-            padding-top: 70px; /* Space for fixed navbar */
+            padding-top: 70px;
             transition: all 0.3s ease;
         }
         
@@ -51,12 +52,6 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
         body.dark-theme .navbar {
             background: rgba(0,0,0,0.9);
             color: white;
-        }
-        
-        body.dark-theme .cards, 
-        body.dark-theme .container > div:not(.navbar) {
-            background: #1e1e2e;
-            color: #e0e0e0;
         }
         
         /* Fixed Navbar */
@@ -165,7 +160,7 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
             background: rgba(0,0,0,0.2);
         }
         
-        /* User info badge */
+        /* User info badge - only shown when logged in */
         .user-info {
             background: rgba(255,255,255,0.15);
             padding: 6px 12px;
@@ -177,45 +172,93 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
             margin-left: 5px;
         }
         
-        /* Mobile responsive */
-        @media (max-width: 968px) {
+        body.light-theme .user-info {
+            background: rgba(0,0,0,0.1);
+        }
+        
+        /* Mobile responsive - Desktop First */
+        @media (max-width: 1024px) {
+            .navbar .title h1 {
+                font-size: 1.1rem;
+            }
+            .navbar a, .theme-toggle {
+                padding: 6px 10px;
+                font-size: 13px;
+            }
+        }
+        
+        @media (max-width: 768px) {
             body {
                 padding-top: 120px;
             }
+            
             .navbar { 
                 flex-direction: column; 
                 text-align: center; 
                 gap: 12px; 
                 padding: 12px 20px;
             }
+            
             .navbar .links {
                 justify-content: center;
+                width: 100%;
             }
+            
             .navbar a, .theme-toggle {
-                padding: 6px 12px;
+                padding: 8px 12px;
                 font-size: 12px;
             }
+            
             .user-info {
                 margin-left: 0;
+                width: 100%;
+                justify-content: center;
             }
         }
         
-        @media (max-width: 768px) {
+        @media (max-width: 600px) {
             body {
-                padding-top: 160px;
+                padding-top: 140px;
             }
+            
             .navbar .links {
                 gap: 8px;
             }
+            
             .navbar a span, .theme-toggle span {
                 display: none;
             }
+            
             .navbar a i, .theme-toggle i {
                 margin: 0;
-                font-size: 18px;
+                font-size: 16px;
             }
+            
             .user-info span {
                 display: inline;
+                font-size: 12px;
+            }
+            
+            .user-info i {
+                display: inline-block;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding-top: 160px;
+            }
+            
+            .navbar {
+                padding: 10px 15px;
+            }
+            
+            .navbar .title h1 {
+                font-size: 1rem;
+            }
+            
+            .navbar .links {
+                gap: 5px;
             }
         }
         
@@ -228,6 +271,12 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
         
         body.light-theme .navbar.scrolled {
             background: rgba(255,255,255,0.98);
+        }
+        
+        @media (max-width: 768px) {
+            .navbar.scrolled {
+                padding: 8px 20px;
+            }
         }
         
         /* Main content container */
@@ -247,23 +296,42 @@ $userName = isset($_SESSION['username']) ? $_SESSION['username'] : 'Guest';
                     <span>Witty Voting System</span>
                 </h1>
             </div>
-            <div class="links">
-                <a href="profile.php"><i class="fas fa-user-circle"></i> <span>Profile</span></a>
-                <a href="vote.php"><i class="fas fa-check-circle"></i> <span>Vote</span></a>
-                <a href="apply.php"><i class="fas fa-user-plus"></i> <span>Candidacy</span></a>
-                <a href="contest.php"><i class="fas fa-users"></i> <span>Contesters</span></a>
-                <a href="my_applications.php"><i class="fas fa-file-alt"></i> <span>My Apps</span></a>
-                <a href="index.php"><i class="fas fa-chart-bar"></i> <span>Results</span></a>
-                <a href="help.php" class="help-link"><i class="fas fa-question-circle"></i> <span>Help</span></a>
+            
+            <?php if ($isLoggedIn): ?>
+                <!-- Logged In User - Show all links -->
+                <div class="links">
+                    <a href="profile.php"><i class="fas fa-user-circle"></i> <span>Profile</span></a>
+                    <a href="vote.php"><i class="fas fa-check-circle"></i> <span>Vote</span></a>
+                    <a href="apply.php"><i class="fas fa-user-plus"></i> <span>Candidacy</span></a>
+                    <a href="contest.php"><i class="fas fa-users"></i> <span>Contesters</span></a>
+                    <a href="my_applications.php"><i class="fas fa-file-alt"></i> <span>My Apps</span></a>
+                    <a href="index.php"><i class="fas fa-chart-bar"></i> <span>Results</span></a>
+                    <a href="help.php" class="help-link"><i class="fas fa-question-circle"></i> <span>Help</span></a>
+                    
+                    <!-- Theme Toggle Button -->
+                    <button id="themeToggle" class="theme-toggle">
+                        <i class="fas fa-sun"></i>
+                        <span>Light</span>
+                    </button>
+                    
+                    <a href="logout.php" class="logout-link"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+                </div>
                 
-                <!-- Theme Toggle Button -->
-                <button id="themeToggle" class="theme-toggle">
-                    <i class="fas fa-sun"></i>
-                    <span>Light</span>
-                </button>
-                
-                <a href="logout.php" class="logout-link"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
-            </div>
+            <?php else: ?>
+                <!-- Not Logged In - Show only public links -->
+                <div class="links">
+                    <a href="index.php"><i class="fas fa-chart-bar"></i> <span>Results</span></a>
+                    <a href="help.php" class="help-link"><i class="fas fa-question-circle"></i> <span>Help</span></a>
+                    
+                    <!-- Theme Toggle Button -->
+                    <button id="themeToggle" class="theme-toggle">
+                        <i class="fas fa-sun"></i>
+                        <span>Light</span>
+                    </button>
+                    
+                    <a href="login.php" style="background: rgba(99, 102, 241, 0.8);"><i class="fas fa-sign-in-alt"></i> <span>Login</span></a>
+                </div>
+            <?php endif; ?>
         </div>
     </header>
     
