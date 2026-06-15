@@ -137,6 +137,13 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         border-radius: 24px;
         padding: 40px;
         box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    /* Dark mode support for registration container */
+    body.dark-theme .registration-container {
+        background: #1e1e2e;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
     }
     
     .registration-title {
@@ -145,6 +152,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         color: #1f2937;
         font-size: 32px;
         font-weight: 700;
+        transition: color 0.3s ease;
+    }
+    
+    body.dark-theme .registration-title {
+        color: #f3f4f6;
     }
     
     .registration-subtitle {
@@ -152,6 +164,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         color: #6b7280;
         margin-bottom: 30px;
         font-size: 14px;
+        transition: color 0.3s ease;
+    }
+    
+    body.dark-theme .registration-subtitle {
+        color: #9ca3af;
     }
     
     .form-group {
@@ -164,6 +181,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         color: #374151;
         font-weight: 600;
         font-size: 14px;
+        transition: color 0.3s ease;
+    }
+    
+    body.dark-theme .form-label {
+        color: #e5e7eb;
     }
     
     .form-label i {
@@ -186,6 +208,14 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         transition: all 0.3s;
         font-family: inherit;
         box-sizing: border-box;
+        background: white;
+    }
+    
+    body.dark-theme .form-input,
+    body.dark-theme .form-input-file {
+        background: #2d2d3d;
+        border-color: #3d3d4d;
+        color: #f3f4f6;
     }
     
     .form-input:focus,
@@ -194,6 +224,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         background-color: white;
+    }
+    
+    body.dark-theme .form-input:focus,
+    body.dark-theme .form-input-file:focus {
+        background-color: #3d3d4d;
     }
     
     .form-input-file {
@@ -205,6 +240,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         font-size: 12px;
         color: #9ca3af;
         margin-top: 5px;
+        transition: color 0.3s ease;
+    }
+    
+    body.dark-theme .file-hint {
+        color: #6b7280;
     }
     
     .elections-grid {
@@ -225,8 +265,18 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         cursor: pointer;
     }
     
+    body.dark-theme .form-check {
+        background: #2d2d3d;
+        border-color: #3d3d4d;
+    }
+    
     .form-check:hover {
         background: #f3f4f6;
+        border-color: #667eea;
+    }
+    
+    body.dark-theme .form-check:hover {
+        background: #3d3d4d;
         border-color: #667eea;
     }
     
@@ -245,6 +295,11 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         display: flex;
         justify-content: space-between;
         align-items: center;
+        transition: color 0.3s ease;
+    }
+    
+    body.dark-theme .form-check-label {
+        color: #e5e7eb;
     }
     
     .election-status {
@@ -258,9 +313,19 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         color: #065f46;
     }
     
+    body.dark-theme .status-active {
+        background: #064e3b;
+        color: #a7f3d0;
+    }
+    
     .status-upcoming {
         background: #fef3c7;
         color: #92400e;
+    }
+    
+    body.dark-theme .status-upcoming {
+        background: #78350f;
+        color: #fde68a;
     }
     
     .submit-btn {
@@ -330,10 +395,20 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         border-left: 4px solid #10b981;
     }
     
+    body.dark-theme .message.success {
+        background-color: #064e3b;
+        color: #a7f3d0;
+    }
+    
     .message.error {
         background-color: #fee2e2;
         color: #991b1b;
         border-left: 4px solid #dc2626;
+    }
+    
+    body.dark-theme .message.error {
+        background-color: #7f1d1d;
+        color: #fecaca;
     }
     
     .login-link {
@@ -341,6 +416,10 @@ $activeElections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         margin-top: 25px;
         padding-top: 20px;
         border-top: 1px solid #e5e7eb;
+    }
+    
+    body.dark-theme .login-link {
+        border-top-color: #3d3d4d;
     }
     
     .login-link a {
@@ -485,7 +564,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Validate password length
-            if (passwordInput && passwordInput.value.length < 6 && passwordInput.value.length > 0) {
+            if (passwordInput && passwordInput.value.length > 0 && passwordInput.value.length < 6) {
                 e.preventDefault();
                 alert('Password must be at least 6 characters long.');
                 return false;
