@@ -14,12 +14,6 @@ if (!isset($_SESSION['admin_id'])) {
 $electionsStmt = $conn->prepare("SELECT id, title, status, start_date, end_date FROM elections ORDER BY id DESC");
 $electionsStmt->execute();
 $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Function to get winner for a position
-function getWinner($results) {
-    if (empty($results)) return null;
-    return $results[0];
-}
 ?>
 
 <!DOCTYPE html>
@@ -31,63 +25,128 @@ function getWinner($results) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-               
-        /* Header */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 30px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* Header - First Row */
         .header {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
             margin-bottom: 30px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             text-align: center;
         }
         
         .header h1 {
             font-size: 32px;
             font-weight: 800;
-            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
         }
         
         .header p {
-            color: rgba(255,255,255,0.9);
+            color: #6b7280;
             font-size: 16px;
         }
         
-        /* Stats Cards */
+        /* Stats Cards - Second Row (Flex) */
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            display: flex;
+            flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 40px;
         }
         
         .stat-card {
+            flex: 1;
+            min-width: 200px;
             background: white;
             border-radius: 16px;
-            padding: 20px;
+            padding: 25px 20px;
             text-align: center;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         }
         
         .stat-card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
         }
         
         .stat-icon {
-            font-size: 40px;
+            font-size: 45px;
             color: #667eea;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
         
         .stat-value {
-            font-size: 32px;
+            font-size: 36px;
             font-weight: 800;
-            color: #333;
+            color: #1f2937;
+            margin-bottom: 5px;
         }
         
         .stat-label {
             font-size: 14px;
-            color: #666;
-            margin-top: 5px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
+        /* Elections List - Third Row */
+        .elections-section {
+            margin-top: 20px;
+        }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .section-title h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .section-title p {
+            color: rgba(255,255,255,0.8);
+            font-size: 14px;
         }
         
         /* Election Card */
@@ -312,10 +371,45 @@ function getWinner($results) {
             color: #9ca3af;
         }
         
+        /* Loading State */
+        .loading-state {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 16px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
         /* Responsive */
         @media (max-width: 768px) {
             body {
                 padding: 15px;
+            }
+            
+            .stats-grid {
+                gap: 15px;
+            }
+            
+            .stat-card {
+                min-width: calc(50% - 15px);
+                padding: 20px 15px;
+            }
+            
+            .stat-value {
+                font-size: 28px;
             }
             
             .election-header {
@@ -333,25 +427,32 @@ function getWinner($results) {
             .results-table th,
             .results-table td {
                 padding: 8px 10px;
-                font-size: 14px;
+                font-size: 12px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stat-card {
+                min-width: 100%;
             }
             
             .stats-grid {
-                gap: 10px;
-            }
-            
-            .stat-card {
-                padding: 15px;
-            }
-            
-            .stat-value {
-                font-size: 24px;
+                flex-direction: column;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- First Row: Header -->
         <div class="header">
             <h1><i class="fas fa-chart-line"></i> Voting Results Dashboard</h1>
             <p>Real-time election results and analytics</p>
@@ -363,7 +464,7 @@ function getWinner($results) {
                 <p>No elections found. Please create an election first.</p>
             </div>
         <?php else: ?>
-            <!-- Statistics Overview -->
+            <!-- Second Row: Statistics Overview (Flex) -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
@@ -402,120 +503,127 @@ function getWinner($results) {
                 </div>
             </div>
             
-            <!-- Elections List -->
-            <?php foreach ($elections as $index => $election): ?>
-                <?php
-                // Get posts for this election
-                $postsStmt = $conn->prepare("SELECT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
-                $postsStmt->execute([$election['id']]);
-                $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
-                ?>
-                
-                <div class="election-card" id="election-<?php echo $election['id']; ?>">
-                    <div class="election-header" onclick="toggleElection(<?php echo $election['id']; ?>)">
-                        <div class="election-title">
-                            <span><i class="fas fa-poll"></i> <?php echo htmlspecialchars($election['title']); ?></span>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span class="election-badge badge-<?php echo $election['status']; ?>">
-                                    <i class="fas <?php echo $election['status'] == 'active' ? 'fa-play' : ($election['status'] == 'upcoming' ? 'fa-clock' : 'fa-flag-checkered'); ?>"></i>
-                                    <?php echo ucfirst($election['status']); ?>
-                                </span>
-                                <i class="fas fa-chevron-down toggle-icon"></i>
-                            </div>
-                        </div>
-                        <div class="election-dates">
-                            <span><i class="far fa-calendar-alt"></i> Start: <?php echo date('M d, Y H:i', strtotime($election['start_date'])); ?></span>
-                            <span><i class="far fa-calendar-check"></i> End: <?php echo date('M d, Y H:i', strtotime($election['end_date'])); ?></span>
-                        </div>
-                    </div>
-                    
-                    <div class="election-content">
-                        <?php if (empty($posts)): ?>
-                            <div class="no-votes">
-                                <i class="fas fa-info-circle"></i> No positions defined for this election.
-                            </div>
-                        <?php else: ?>
-                            <?php foreach ($posts as $post):
-                                $postName = $post['postname'];
-                                
-                                // Get vote counts for this position
-                                $voteStmt = $conn->prepare("
-                                    SELECT candidate_name, COUNT(*) as vote_count 
-                                    FROM votes 
-                                    WHERE election_id = ? AND postname = ? 
-                                    GROUP BY candidate_name 
-                                    ORDER BY vote_count DESC
-                                ");
-                                $voteStmt->execute([$election['id'], $postName]);
-                                $results = $voteStmt->fetchAll(PDO::FETCH_ASSOC);
-                                $totalVotes = array_sum(array_column($results, 'vote_count'));
-                                $winner = !empty($results) ? $results[0] : null;
-                                ?>
-                                
-                                <div class="post-section">
-                                    <div class="post-header">
-                                        <div class="post-title">
-                                            <span><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($postName); ?></span>
-                                            <?php if ($winner && $totalVotes > 0): ?>
-                                                <span class="winner-badge">
-                                                    <i class="fas fa-crown"></i> Winner: <?php echo htmlspecialchars($winner['candidate_name']); ?> (<?php echo $winner['vote_count']; ?> votes)
-                                                </span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                    
-                                    <?php if (empty($results) || $totalVotes == 0): ?>
-                                        <div class="no-votes">
-                                            <i class="fas fa-chart-simple"></i> No votes recorded for this position yet.
-                                        </div>
-                                    <?php else: ?>
-                                        <table class="results-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Rank</th>
-                                                    <th>Candidate</th>
-                                                    <th>Votes</th>
-                                                    <th>Percentage</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($results as $index => $result):
-                                                    $percentage = ($totalVotes > 0) ? ($result['vote_count'] / $totalVotes) * 100 : 0;
-                                                    $isWinner = ($index === 0);
-                                                ?>
-                                                    <tr class="<?php echo $isWinner ? 'winner-row' : ''; ?>">
-                                                        <td width="60">
-                                                            <?php if ($isWinner): ?>
-                                                                <i class="fas fa-crown crown-icon"></i> #<?php echo $index + 1; ?>
-                                                            <?php else: ?>
-                                                                #<?php echo $index + 1; ?>
-                                                            <?php endif; ?>
-                                                        </td>
-                                                        <td class="candidate-name">
-                                                            <?php echo htmlspecialchars($result['candidate_name']); ?>
-                                                        </td>
-                                                        <td width="100">
-                                                            <span class="vote-count"><?php echo number_format($result['vote_count']); ?></span>
-                                                        </td>
-                                                        <td>
-                                                            <div style="display: flex; align-items: center; gap: 10px;">
-                                                                <div class="percentage-bar" style="flex: 1;">
-                                                                    <div class="percentage-fill" style="width: <?php echo $percentage; ?>%;"></div>
-                                                                </div>
-                                                                <span class="percentage-text"><?php echo number_format($percentage, 1); ?>%</span>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
+            <!-- Third Row: Elections List -->
+            <div class="elections-section">
+                <div class="section-title">
+                    <h2><i class="fas fa-poll"></i> Elections Results</h2>
+                    <p>Click on any election to view detailed results</p>
                 </div>
-            <?php endforeach; ?>
+                
+                <?php foreach ($elections as $index => $election): ?>
+                    <?php
+                    // Get posts for this election
+                    $postsStmt = $conn->prepare("SELECT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
+                    $postsStmt->execute([$election['id']]);
+                    $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
+                    ?>
+                    
+                    <div class="election-card" id="election-<?php echo $election['id']; ?>">
+                        <div class="election-header" onclick="toggleElection(<?php echo $election['id']; ?>)">
+                            <div class="election-title">
+                                <span><i class="fas fa-poll"></i> <?php echo htmlspecialchars($election['title']); ?></span>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <span class="election-badge badge-<?php echo $election['status']; ?>">
+                                        <i class="fas <?php echo $election['status'] == 'active' ? 'fa-play' : ($election['status'] == 'upcoming' ? 'fa-clock' : 'fa-flag-checkered'); ?>"></i>
+                                        <?php echo ucfirst($election['status']); ?>
+                                    </span>
+                                    <i class="fas fa-chevron-down toggle-icon"></i>
+                                </div>
+                            </div>
+                            <div class="election-dates">
+                                <span><i class="far fa-calendar-alt"></i> Start: <?php echo date('M d, Y H:i', strtotime($election['start_date'])); ?></span>
+                                <span><i class="far fa-calendar-check"></i> End: <?php echo date('M d, Y H:i', strtotime($election['end_date'])); ?></span>
+                            </div>
+                        </div>
+                        
+                        <div class="election-content">
+                            <?php if (empty($posts)): ?>
+                                <div class="no-votes">
+                                    <i class="fas fa-info-circle"></i> No positions defined for this election.
+                                </div>
+                            <?php else: ?>
+                                <?php foreach ($posts as $post):
+                                    $postName = $post['postname'];
+                                    
+                                    // Get vote counts for this position
+                                    $voteStmt = $conn->prepare("
+                                        SELECT candidate_name, COUNT(*) as vote_count 
+                                        FROM votes 
+                                        WHERE election_id = ? AND postname = ? 
+                                        GROUP BY candidate_name 
+                                        ORDER BY vote_count DESC
+                                    ");
+                                    $voteStmt->execute([$election['id'], $postName]);
+                                    $results = $voteStmt->fetchAll(PDO::FETCH_ASSOC);
+                                    $totalVotes = array_sum(array_column($results, 'vote_count'));
+                                    $winner = !empty($results) ? $results[0] : null;
+                                    ?>
+                                    
+                                    <div class="post-section">
+                                        <div class="post-header">
+                                            <div class="post-title">
+                                                <span><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($postName); ?></span>
+                                                <?php if ($winner && $totalVotes > 0): ?>
+                                                    <span class="winner-badge">
+                                                        <i class="fas fa-crown"></i> Winner: <?php echo htmlspecialchars($winner['candidate_name']); ?> (<?php echo $winner['vote_count']; ?> votes)
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        
+                                        <?php if (empty($results) || $totalVotes == 0): ?>
+                                            <div class="no-votes">
+                                                <i class="fas fa-chart-simple"></i> No votes recorded for this position yet.
+                                            </div>
+                                        <?php else: ?>
+                                            <table class="results-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Rank</th>
+                                                        <th>Candidate</th>
+                                                        <th>Votes</th>
+                                                        <th>Percentage</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($results as $idx => $result):
+                                                        $percentage = ($totalVotes > 0) ? ($result['vote_count'] / $totalVotes) * 100 : 0;
+                                                        $isWinner = ($idx === 0);
+                                                    ?>
+                                                        <tr class="<?php echo $isWinner ? 'winner-row' : ''; ?>">
+                                                            <td width="60">
+                                                                <?php if ($isWinner): ?>
+                                                                    <i class="fas fa-crown crown-icon"></i> #<?php echo $idx + 1; ?>
+                                                                <?php else: ?>
+                                                                    #<?php echo $idx + 1; ?>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td class="candidate-name">
+                                                                <?php echo htmlspecialchars($result['candidate_name']); ?>
+                                                            </td>
+                                                            <td width="100">
+                                                                <span class="vote-count"><?php echo number_format($result['vote_count']); ?></span>
+                                                            </td>
+                                                            <td>
+                                                                <div style="display: flex; align-items: center; gap: 10px;">
+                                                                    <div class="percentage-bar" style="flex: 1;">
+                                                                        <div class="percentage-fill" style="width: <?php echo $percentage; ?>%;"></div>
+                                                                    </div>
+                                                                    <span class="percentage-text"><?php echo number_format($percentage, 1); ?>%</span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
         <?php endif; ?>
     </div>
     
