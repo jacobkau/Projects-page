@@ -434,7 +434,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                 localStorage.setItem('voting_theme', 'light');
                 const themeBtn = document.getElementById('themeToggleBtn');
                 if (themeBtn) {
-                    themeBtn.innerHTML = '<i class="fas fa-sun"></i> <span>Switch to Light Mode</span>';
+                    themeBtn.innerHTML = '<i class="fas fa-sun"></i> <span>Switch to Dark Mode</span>';
                 }
             } else {
                 document.body.classList.remove('light-theme');
@@ -442,7 +442,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['username']) && isset($
                 localStorage.setItem('voting_theme', 'dark');
                 const themeBtn = document.getElementById('themeToggleBtn');
                 if (themeBtn) {
-                    themeBtn.innerHTML = '<i class="fas fa-moon"></i> <span>Switch to Dark Mode</span>';
+                    themeBtn.innerHTML = '<i class="fas fa-moon"></i> <span>Switch to Light Mode</span>';
                 }
             }
         }
