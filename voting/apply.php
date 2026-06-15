@@ -8,6 +8,7 @@ if (empty($_SESSION["username"])) {
 }
 
 $message = "";
+$messageType = "";
 $username = $_SESSION["username"];
 
 // Get user ID
@@ -20,10 +21,10 @@ $userId = $user ? $user['id'] : null;
 try {
     $checkColumns = $conn->query("SHOW COLUMNS FROM contesters LIKE 'profile_photo_blob'");
     if ($checkColumns->rowCount() == 0) {
-    $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_blob LONGBLOB");
-    $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_type VARCHAR(10)");
-    $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_name VARCHAR(255)");
-    error_log("Added BLOB columns to contesters table");
+        $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_blob LONGBLOB");
+        $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_type VARCHAR(10)");
+        $conn->exec("ALTER TABLE contesters ADD COLUMN profile_photo_name VARCHAR(255)");
+        error_log("Added BLOB columns to contesters table");
     }
 } catch (PDOException $e) {
     error_log("Note: " . $e->getMessage());
@@ -42,40 +43,73 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // Validate inputs
     if ($electionId === null || $postName === null) {
-        $message = "<p style='color:red;'>Please select an election and a post.</p>";
+        $message = "Please select an election and a position.";
+        $messageType = "error";
     } elseif (empty($_FILES['profile_photo']['name'])) {
-        $message = "<p style='color:red;'>Please upload a profile photo.</p>";
+        $message = "Please upload a profile photo.";
+        $messageType = "error";
     } else {
         $allowedTypes = ['jpg', 'jpeg', 'png', 'gif'];
         $fileExt = strtolower(pathinfo($_FILES['profile_photo']['name'], PATHINFO_EXTENSION));
         
         if (!in_array($fileExt, $allowedTypes)) {
-            $message = "<p style='color:red;'>Invalid file type. Only JPG, PNG, and GIF are allowed.</p>";
+            $message = "Invalid file type. Only JPG, PNG, and GIF are allowed.";
+            $messageType = "error";
         } elseif ($_FILES['profile_photo']['size'] > 2 * 1024 * 1024) {
-            $message = "<p style='color:red;'>File is too large. Maximum size is 2MB.</p>";
+            $message = "File is too large. Maximum size is 2MB.";
+            $messageType = "error";
         } else {
             // Read file content for database storage
             $profilePhotoBlob = file_get_contents($_FILES['profile_photo']['tmp_name']);
             $profilePhotoType = $fileExt;
             $profilePhotoName = $_FILES['profile_photo']['name'];
             
-            // Check if user has already applied for the same post in the same election
-            $checkStmt = $conn->prepare("SELECT 1 FROM contesters WHERE election_id = ? AND postname = ? AND user_id = ?");
-            $checkStmt->execute([$electionId, $postName, $userId]);
+            // Check if user has already applied for ANY post in this election
+            $checkExistingStmt = $conn->prepare("SELECT postname FROM contesters WHERE election_id = ? AND user_id = ?");
+            $checkExistingStmt->execute([$electionId, $userId]);
+            $existingApplication = $checkExistingStmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($checkStmt->rowCount() > 0) {
-                $message = "<p style='color:red;'>You have already applied for this post in this election.</p>";
+            if ($existingApplication) {
+                $message = "You have already applied for the position of '" . htmlspecialchars($existingApplication['postname']) . "' in this election. You cannot apply for multiple positions in the same election.";
+                $messageType = "error";
             } else {
-                // Insert data into contesters table with BLOB image
-                $insertStmt = $conn->prepare("INSERT INTO contesters (election_id, postname, user_id, name, bio, profile_photo_blob, profile_photo_type, profile_photo_name, votes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)");
+                // Check if user has already applied for the same post in the same election
+                $checkStmt = $conn->prepare("SELECT 1 FROM contesters WHERE election_id = ? AND postname = ? AND user_id = ?");
+                $checkStmt->execute([$electionId, $postName, $userId]);
                 
-                if ($insertStmt->execute([$electionId, $postName, $userId, $username, $bio, $profilePhotoBlob, $profilePhotoType, $profilePhotoName])) {
-                    $message = "<p style='color:green;'>✓ Application submitted successfully!</p>";
+                if ($checkStmt->rowCount() > 0) {
+                    $message = "You have already applied for this position in this election.";
+                    $messageType = "error";
                 } else {
-                    $message = "<p style='color:red;'>Error submitting application. Please try again.</p>";
+                    // Insert data into contesters table with BLOB image
+                    $insertStmt = $conn->prepare("INSERT INTO contesters (election_id, postname, user_id, name, bio, profile_photo_blob, profile_photo_type, profile_photo_name, votes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)");
+                    
+                    if ($insertStmt->execute([$electionId, $postName, $userId, $username, $bio, $profilePhotoBlob, $profilePhotoType, $profilePhotoName])) {
+                        $message = "✓ Application submitted successfully! You are now a candidate for " . htmlspecialchars($postName) . ".";
+                        $messageType = "success";
+                        // Clear form data after successful submission
+                        $_POST = array();
+                    } else {
+                        $message = "Error submitting application. Please try again.";
+                        $messageType = "error";
+                    }
                 }
             }
         }
+    }
+}
+
+// Get selected election ID for displaying posts
+$selectedElectionId = isset($_POST['election_id']) ? intval($_POST['election_id']) : null;
+$availablePosts = [];
+
+if ($selectedElectionId) {
+    try {
+        $postStmt = $conn->prepare("SELECT DISTINCT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
+        $postStmt->execute([$selectedElectionId]);
+        $availablePosts = $postStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching posts: " . $e->getMessage());
     }
 }
 ?>
@@ -216,6 +250,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
             margin-top: 10px;
+            position: relative;
         }
         
         .submit-btn:hover { 
@@ -225,6 +260,43 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         .submit-btn:active {
             transform: translateY(0);
+        }
+        
+        .submit-btn.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .submit-btn.loading:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .submit-btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            animation: spin 0.8s linear infinite;
+        }
+        
+        .submit-btn.loading .spinner {
+            display: block;
+        }
+        
+        .submit-btn.loading .btn-text {
+            visibility: hidden;
+        }
+        
+        @keyframes spin {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
         }
         
         .message {
@@ -317,18 +389,72 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     function fetchPosts(electionId) {
         if (electionId === "") {
             document.getElementById('postname').innerHTML = '<option value="">Select Election First</option>';
+            document.getElementById('postname').disabled = true;
             return;
         }
         
+        // Show loading state for posts dropdown
+        const postSelect = document.getElementById('postname');
+        postSelect.innerHTML = '<option value="">Loading positions...</option>';
+        postSelect.disabled = true;
+        
         var xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4 && xhr.status == 200) {
-                document.getElementById('postname').innerHTML = xhr.responseText;
+            if (xhr.readyState == 4) {
+                if (xhr.status == 200) {
+                    postSelect.innerHTML = xhr.responseText;
+                    postSelect.disabled = false;
+                } else {
+                    postSelect.innerHTML = '<option value="">Error loading positions</option>';
+                    postSelect.disabled = true;
+                }
             }
         };
         xhr.open('GET', 'get_posts.php?election_id=' + electionId, true);
         xhr.send();
     }
+    
+    // Form submission with loading state
+    document.getElementById('applicationForm').addEventListener('submit', function(e) {
+        const submitBtn = document.getElementById('submitBtn');
+        const fileInput = document.getElementById('profile_photo');
+        
+        // Validate file is selected
+        if (!fileInput.files || !fileInput.files[0]) {
+            e.preventDefault();
+            alert('Please upload a profile photo.');
+            return false;
+        }
+        
+        // Show loading state
+        submitBtn.classList.add('loading');
+        submitBtn.disabled = true;
+        
+        // The form will submit normally, loading state prevents double submission
+        return true;
+    });
+    
+    // File validation
+    document.getElementById('profile_photo').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (file) {
+            var validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+            if (!validTypes.includes(file.type)) {
+                alert('Invalid file type. Only JPG, PNG, and GIF are allowed.');
+                this.value = '';
+            } else if (file.size > 2 * 1024 * 1024) {
+                alert('File is too large. Maximum size is 2MB.');
+                this.value = '';
+            }
+        }
+    });
+    
+    // Reset loading state if user navigates back
+    window.addEventListener('pageshow', function() {
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+    });
     </script>
 </head>
 <body>
@@ -355,7 +481,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <div class="subtitle">Register as a candidate for an election position</div>
         
         <?php if ($message): ?>
-            <div class="message <?php echo strpos($message, 'green') !== false ? 'success' : 'error'; ?>">
+            <div class="message <?php echo $messageType; ?>">
                 <?php echo $message; ?>
             </div>
         <?php endif; ?>
@@ -366,7 +492,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <li>You must be registered for an election before applying</li>
                 <li>Each candidate needs a profile photo (JPG, PNG, GIF, max 2MB)</li>
                 <li>Provide a clear bio and manifesto for voters</li>
-                <li>You can only apply for one position per election</li>
+                <li><strong>⚠️ You can only apply for ONE position per election</strong></li>
             </ul>
         </div>
         
@@ -382,7 +508,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <select name="election_id" id="election_id" onchange="fetchPosts(this.value);" required>
                     <option value="">-- Select Election --</option>
                     <?php foreach ($elections as $election): ?>
-                        <option value="<?php echo $election['id']; ?>">
+                        <option value="<?php echo $election['id']; ?>" <?php echo ($selectedElectionId == $election['id']) ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($election['title']); ?>
                         </option>
                     <?php endforeach; ?>
@@ -393,6 +519,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <label for="postname" class="required">Select Position:</label>
                 <select name="postname" id="postname" required>
                     <option value="">Select Election First</option>
+                    <?php foreach ($availablePosts as $post): ?>
+                        <option value="<?php echo htmlspecialchars($post['postname']); ?>">
+                            <?php echo htmlspecialchars($post['postname']); ?>
+                        </option>
+                    <?php endforeach; ?>
                 </select>
             </div>
 
@@ -403,7 +534,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
             
             <button type="submit" class="submit-btn" id="submitBtn">
-                Submit Application
+                <span class="btn-text">Submit Application</span>
+                <span class="spinner"></span>
             </button>
         </form>
     </div>
@@ -422,22 +554,5 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
         </div>
     </footer>
-
-    <script>
-    // File validation
-    document.getElementById('profile_photo').addEventListener('change', function(e) {
-        var file = e.target.files[0];
-        if (file) {
-            var validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-            if (!validTypes.includes(file.type)) {
-                alert('Invalid file type. Only JPG, PNG, and GIF are allowed.');
-                this.value = '';
-            } else if (file.size > 2 * 1024 * 1024) {
-                alert('File is too large. Maximum size is 2MB.');
-                this.value = '';
-            }
-        }
-    });
-    </script>
 </body>
 </html>
