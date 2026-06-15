@@ -438,7 +438,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container1">
         <!-- First Row: Header -->
         <div class="header">
             <h1><i class="fas fa-chart-line"></i> Voting Results Dashboard</h1>
