@@ -251,6 +251,10 @@ if ($selectedElectionId) {
             transition: transform 0.2s, box-shadow 0.2s;
             margin-top: 10px;
             position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         
         .submit-btn:hover { 
@@ -280,23 +284,32 @@ if ($selectedElectionId) {
             border: 2px solid rgba(255,255,255,0.3);
             border-radius: 50%;
             border-top-color: white;
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
             animation: spin 0.8s linear infinite;
         }
         
         .submit-btn.loading .spinner {
-            display: block;
+            display: inline-block;
         }
         
         .submit-btn.loading .btn-text {
-            visibility: hidden;
+            display: inline-block;
         }
         
         @keyframes spin {
-            to { transform: translate(-50%, -50%) rotate(360deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Loading overlay for posts */
+        .loading-posts {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        
+        .loading-posts i {
+            font-size: 24px;
+            margin-bottom: 10px;
+            display: block;
         }
         
         .message {
@@ -395,9 +408,8 @@ if ($selectedElectionId) {
             <div class="links">
                 <a href="index.php">All Votes</a>
                 <a href="vote.php">Vote</a>
-                <a href="apply.php" class="active">Contest</a>
+                <a href="apply.php" class="active">Candidacy Appli.</a>
                 <a href="contest.php">Contesters</a>
-                <a href="members.php">Reg. Voters</a>
                 <a href="my_applications.php">My applications</a>
                 <a href="profile.php">My Profile</a>
                 <a href="logout.php">Log out</a>
@@ -406,11 +418,12 @@ if ($selectedElectionId) {
     </header>
 
     <div class="apply-container">
-        <h2>🗳️ Apply for Candidacy</h2>
+        <h2> Apply for Candidacy</h2>
         <div class="subtitle">Register as a candidate for an election position</div>
         
         <?php if ($message): ?>
             <div class="message <?php echo $messageType; ?>">
+                <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
                 <?php echo $message; ?>
             </div>
         <?php endif; ?>
@@ -454,6 +467,10 @@ if ($selectedElectionId) {
                         </option>
                     <?php endforeach; ?>
                 </select>
+                <div id="postsLoading" class="loading-posts" style="display: none;">
+                    <i class="fas fa-spinner fa-pulse"></i>
+                    Loading positions...
+                </div>
             </div>
 
             <div class="form-group">
@@ -490,26 +507,33 @@ if ($selectedElectionId) {
         // Function to fetch posts for an election
         window.fetchPosts = function(electionId) {
             const postSelect = document.getElementById('postname');
+            const postsLoading = document.getElementById('postsLoading');
+            
             if (!postSelect) return;
             
             if (electionId === "") {
                 postSelect.innerHTML = '<option value="">Select Election First</option>';
                 postSelect.disabled = true;
+                if (postsLoading) postsLoading.style.display = 'none';
                 return;
             }
             
             // Show loading state for posts dropdown
-            postSelect.innerHTML = '<option value="">Loading positions...</option>';
+            postSelect.style.display = 'none';
+            if (postsLoading) postsLoading.style.display = 'block';
             postSelect.disabled = true;
             
             var xhr = new XMLHttpRequest();
             xhr.onreadystatechange = function() {
                 if (xhr.readyState == 4) {
+                    postSelect.style.display = 'block';
+                    if (postsLoading) postsLoading.style.display = 'none';
+                    
                     if (xhr.status == 200) {
                         postSelect.innerHTML = xhr.responseText;
                         postSelect.disabled = false;
                     } else {
-                        postSelect.innerHTML = '<option value="">Error loading positions</option>';
+                        postSelect.innerHTML = '<option value="">Error loading positions. Please try again.</option>';
                         postSelect.disabled = true;
                     }
                 }
@@ -522,37 +546,101 @@ if ($selectedElectionId) {
         const form = document.getElementById('applicationForm');
         const submitBtn = document.getElementById('submitBtn');
         const fileInput = document.getElementById('profile_photo');
+        const electionSelect = document.getElementById('election_id');
+        const postSelect = document.getElementById('postname');
         
         if (form && submitBtn) {
             form.addEventListener('submit', function(e) {
                 // Validate file is selected
                 if (!fileInput || !fileInput.files || !fileInput.files[0]) {
                     e.preventDefault();
-                    alert('Please upload a profile photo.');
+                    showError('Please upload a profile photo.');
+                    return false;
+                }
+                
+                // Validate election is selected
+                if (!electionSelect || !electionSelect.value) {
+                    e.preventDefault();
+                    showError('Please select an election.');
+                    return false;
+                }
+                
+                // Validate position is selected
+                if (!postSelect || !postSelect.value || postSelect.disabled) {
+                    e.preventDefault();
+                    showError('Please select a position.');
                     return false;
                 }
                 
                 // Show loading state
                 submitBtn.classList.add('loading');
                 submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner"></span><span class="btn-text">Submitting...</span>';
                 
                 // The form will submit normally, loading state prevents double submission
                 return true;
             });
         }
         
-        // File validation
+        function showError(message) {
+            // Remove any existing error message
+            const existingError = document.querySelector('.message.error');
+            if (existingError) existingError.remove();
+            
+            // Create new error message
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'message error';
+            errorDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + message;
+            
+            // Insert at the top of the form
+            const formContainer = document.querySelector('.apply-container');
+            const form = document.getElementById('applicationForm');
+            formContainer.insertBefore(errorDiv, form);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (errorDiv && errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 5000);
+        }
+        
+        // File validation with live feedback
         if (fileInput) {
             fileInput.addEventListener('change', function(e) {
-                var file = e.target.files[0];
+                const file = e.target.files[0];
+                const fileHint = document.querySelector('.file-hint');
+                
                 if (file) {
-                    var validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-                    if (!validTypes.includes(file.type)) {
+                    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+                    const isValidType = validTypes.includes(file.type);
+                    const isValidSize = file.size <= 2 * 1024 * 1024;
+                    
+                    if (!isValidType) {
                         alert('Invalid file type. Only JPG, PNG, and GIF are allowed.');
                         this.value = '';
-                    } else if (file.size > 2 * 1024 * 1024) {
+                        if (fileHint) {
+                            fileHint.style.color = '#dc2626';
+                            fileHint.innerHTML = '❌ Invalid file type. Please upload JPG, PNG, or GIF.';
+                        }
+                    } else if (!isValidSize) {
                         alert('File is too large. Maximum size is 2MB.');
                         this.value = '';
+                        if (fileHint) {
+                            fileHint.style.color = '#dc2626';
+                            fileHint.innerHTML = '❌ File too large. Maximum size is 2MB.';
+                        }
+                    } else {
+                        if (fileHint) {
+                            fileHint.style.color = '#10b981';
+                            fileHint.innerHTML = '✓ File accepted: ' + file.name;
+                        }
+                        setTimeout(() => {
+                            if (fileHint) {
+                                fileHint.style.color = '#999';
+                                fileHint.innerHTML = 'Accepted formats: JPG, PNG, GIF (Max 2MB). Your photo will be stored securely in the database.';
+                            }
+                        }, 3000);
                     }
                 }
             });
@@ -563,11 +651,11 @@ if ($selectedElectionId) {
             if (submitBtn) {
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span class="btn-text">Submit Application</span><span class="spinner"></span>';
             }
         });
         
         // If election is pre-selected, load its posts
-        const electionSelect = document.getElementById('election_id');
         if (electionSelect && electionSelect.value) {
             fetchPosts(electionSelect.value);
         }
