@@ -2,6 +2,9 @@
 session_start();
 include("conn.php");
 
+// Include mail configuration
+require_once __DIR__ . '/mail_config.php';
+
 $message = "";
 $messageType = "";
 $display_reset_form = false;
@@ -19,7 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
 
     // Validate email
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $message = "Invalid email format.";
+        $message = "❌ Invalid email format. Please enter a valid email address.";
         $messageType = "error";
     } else {
         try {
@@ -56,66 +59,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
                 $uri = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 $reset_link = "$protocol://$host$uri/forgot_password.php?token=$token";
 
-                // Send email with reset link
-                $subject = "Password Reset Request - Voting System";
-                $body = "
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>Password Reset</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; }
-                            .content { padding: 30px; background: #f9fafb; }
-                            .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }
-                            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class='container'>
-                            <div class='header'>
-                                <h2>Voting System Password Reset</h2>
-                            </div>
-                            <div class='content'>
-                                <p>Hello <strong>$username</strong>,</p>
-                                <p>We received a request to reset your password for your Voting System account.</p>
-                                <p>Click the button below to reset your password:</p>
-                                <div style='text-align: center;'>
-                                    <a href='$reset_link' class='button'>Reset Password</a>
-                                </div>
-                                <p>Or copy and paste this link into your browser:</p>
-                                <p><small>$reset_link</small></p>
-                                <p><strong>Note:</strong> This link will expire in 1 hour.</p>
-                                <p>If you didn't request this, please ignore this email.</p>
-                            </div>
-                            <div class='footer'>
-                                <p>&copy; " . date('Y') . " Voting System. All rights reserved.</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                ";
+                // Send email using Resend API
+                $emailResult = sendEmailWithResend($email, $username, $reset_link);
                 
-                $headers = "MIME-Version: 1.0" . "\r\n";
-                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                $headers .= "From: Voting System <noreply@votingsystem.com>" . "\r\n";
-                $headers .= "Reply-To: support@votingsystem.com" . "\r\n";
-
-                if (mail($email, $subject, $body, $headers)) {
-                    $message = "A password reset link has been sent to your email. Please check your inbox (and spam folder).";
+                if ($emailResult['success']) {
+                    $message = "✓ A password reset link has been sent to your email. Please check your inbox (and spam folder).";
                     $messageType = "success";
                 } else {
-                    $message = "Failed to send reset email. Please try again later or contact support.";
-                    $messageType = "error";
-                    error_log("Failed to send password reset email to: " . $email);
+                    // Fallback to native mail function
+                    if (function_exists('sendEmailFallback') && sendEmailFallback($email, $username, $reset_link)) {
+                        $message = "✓ A password reset link has been sent to your email.";
+                        $messageType = "success";
+                    } else {
+                        $message = "⚠️ Unable to send reset email. Please contact support or try again later.";
+                        $messageType = "error";
+                        error_log("Failed to send password reset email to: " . $email);
+                    }
                 }
             } else {
-                $message = "Email address not found in our records.";
+                $message = "❌ Email address not found in our records. Please check and try again.";
                 $messageType = "error";
             }
         } catch (PDOException $e) {
-            $message = "An error occurred. Please try again later.";
+            $message = "❌ An error occurred. Please try again later.";
             $messageType = "error";
             error_log("Forgot password error: " . $e->getMessage());
         }
@@ -129,10 +95,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
     $confirm_password = trim($_POST['confirm_password']);
 
     if (strlen($password) < 6) {
-        $message = "Password must be at least 6 characters long.";
+        $message = "❌ Password must be at least 6 characters long.";
         $messageType = "error";
     } elseif ($password !== $confirm_password) {
-        $message = "Passwords do not match.";
+        $message = "❌ Passwords do not match. Please try again.";
         $messageType = "error";
     } else {
         try {
@@ -146,7 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                 $expiry = $row['expiry'];
 
                 if (strtotime(date('Y-m-d H:i:s')) > strtotime($expiry)) {
-                    $message = "Password reset link has expired. Please request a new one.";
+                    $message = "❌ Password reset link has expired. Please request a new one.";
                     $messageType = "error";
                 } else {
                     // Update password
@@ -158,7 +124,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                     $deleteStmt = $conn->prepare("DELETE FROM password_reset_tokens WHERE token = ?");
                     $deleteStmt->execute([$token]);
 
-                    $message = "Password reset successfully! Redirecting to login...";
+                    $message = "✓ Password reset successfully! Redirecting to login page...";
                     $messageType = "success";
                     $display_reset_form = false;
                     
@@ -166,14 +132,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                     echo "<script>setTimeout(function(){ window.location.href = 'login.php'; }, 2000);</script>";
                 }
             } else {
-                $message = "Invalid password reset link.";
+                $message = "❌ Invalid password reset link. Please request a new one.";
                 $messageType = "error";
             }
         } catch (PDOException $e) {
-            $message = "An error occurred. Please try again later.";
+            $message = "❌ An error occurred. Please try again later.";
             $messageType = "error";
             error_log("Reset password error: " . $e->getMessage());
         }
+    }
+}
+
+// Verify token validity when displaying reset form
+if ($display_reset_form && $token) {
+    try {
+        $stmt = $conn->prepare("SELECT expiry FROM password_reset_tokens WHERE token = ?");
+        $stmt->execute([$token]);
+        if ($stmt->rowCount() == 1) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (strtotime(date('Y-m-d H:i:s')) > strtotime($row['expiry'])) {
+                $message = "❌ This password reset link has expired. Please request a new one.";
+                $messageType = "error";
+                $display_reset_form = false;
+            }
+        } else {
+            $message = "❌ Invalid password reset link. Please request a new one.";
+            $messageType = "error";
+            $display_reset_form = false;
+        }
+    } catch (PDOException $e) {
+        $message = "❌ An error occurred. Please try again later.";
+        $messageType = "error";
+        $display_reset_form = false;
     }
 }
 ?>
@@ -222,13 +212,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
     }
     
     .message {
-        padding: 12px 16px;
+        padding: 15px 20px;
         border-radius: 12px;
         margin-bottom: 25px;
         font-size: 14px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
     
     .message.success {
@@ -321,8 +323,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
         box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
     }
     
+    .form-button:active {
+        transform: translateY(0);
+    }
+    
     .form-button.loading {
-        opacity: 0.8;
+        opacity: 0.7;
         cursor: not-allowed;
         transform: none;
     }
@@ -391,7 +397,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
         <?php echo $display_reset_form ? "Reset Password" : "Forgot Password"; ?>
     </h1>
     <p class="forgot-subtitle">
-        <?php echo $display_reset_form ? "Enter your new password below" : "Enter your email to receive a reset link"; ?>
+        <?php echo $display_reset_form ? "Enter your new password below" : "Enter your email to receive a password reset link"; ?>
     </p>
     
     <?php if (!empty($message)): ?>
@@ -401,14 +407,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
         </div>
     <?php endif; ?>
     
-    <form method="post" action="<?php echo $display_reset_form ? 'forgot_password.php?token=' . $token : 'forgot_password.php'; ?>" id="passwordForm">
+    <form method="post" action="<?php echo $display_reset_form ? 'forgot_password.php?token=' . urlencode($token) : 'forgot_password.php'; ?>" id="passwordForm">
         <?php if ($display_reset_form) { ?>
             <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
             <div class="form-group">
                 <label for="password" class="form-label">
                     <i class="fas fa-lock"></i> New Password
                 </label>
-                <input type="password" name="password" id="password" class="form-input" placeholder="Enter new password" required>
+                <input type="password" name="password" id="password" class="form-input" placeholder="Enter new password (min 6 characters)" required>
+                <small style="color: #6b7280; font-size: 12px; margin-top: 5px; display: block;">Password must be at least 6 characters long</small>
             </div>
             <div class="form-group">
                 <label for="confirm_password" class="form-label">
@@ -426,6 +433,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                     <i class="fas fa-envelope"></i> Email Address
                 </label>
                 <input type="email" name="email" id="email" class="form-input" placeholder="your@email.com" required>
+                <small style="color: #6b7280; font-size: 12px; margin-top: 5px; display: block;">We'll send a password reset link to this email</small>
             </div>
             <button type="submit" name="forgot_password" class="form-button" id="submitBtn">
                 <span class="spinner"></span>
@@ -438,7 +446,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
         <?php if (!$display_reset_form) { ?>
             <a href="login.php"><i class="fas fa-sign-in-alt"></i> Back to Login</a>
             <span>|</span>
-            <a href="register.php"><i class="fas fa-user-plus"></i> Create Account</a>
+            <a href="register.php"><i class="fas fa-user-plus"></i> Create New Account</a>
         <?php } else { ?>
             <a href="login.php"><i class="fas fa-arrow-left"></i> Back to Login</a>
         <?php } ?>
@@ -451,19 +459,37 @@ document.addEventListener('DOMContentLoaded', function() {
     const submitBtn = document.getElementById('submitBtn');
     
     if (form && submitBtn) {
-        form.addEventListener('submit', function() {
-            // Validate password match for reset form
+        form.addEventListener('submit', function(e) {
             <?php if ($display_reset_form): ?>
             const password = document.getElementById('password');
             const confirmPassword = document.getElementById('confirm_password');
-            if (password.value !== confirmPassword.value) {
-                e.preventDefault();
-                alert('Passwords do not match!');
-                return false;
-            }
+            
+            // Reset border colors
+            password.style.borderColor = '#e5e7eb';
+            confirmPassword.style.borderColor = '#e5e7eb';
+            
+            // Validate password length
             if (password.value.length < 6) {
                 e.preventDefault();
-                alert('Password must be at least 6 characters long!');
+                password.style.borderColor = '#dc2626';
+                showMessage('Password must be at least 6 characters long!', 'error');
+                return false;
+            }
+            
+            // Validate password match
+            if (password.value !== confirmPassword.value) {
+                e.preventDefault();
+                confirmPassword.style.borderColor = '#dc2626';
+                showMessage('Passwords do not match!', 'error');
+                return false;
+            }
+            <?php else: ?>
+            // Validate email for forgot password form
+            const email = document.getElementById('email');
+            if (email.value.trim() === '') {
+                e.preventDefault();
+                email.style.borderColor = '#dc2626';
+                showMessage('Please enter your email address!', 'error');
                 return false;
             }
             <?php endif; ?>
@@ -474,6 +500,77 @@ document.addEventListener('DOMContentLoaded', function() {
             return true;
         });
     }
+    
+    function showMessage(msg, type) {
+        // Remove existing message
+        const existingMsg = document.querySelector('.message');
+        if (existingMsg) existingMsg.remove();
+        
+        // Create new message
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message ' + type;
+        msgDiv.innerHTML = '<i class="fas ' + (type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle') + '"></i> ' + msg;
+        
+        // Insert after subtitle
+        const subtitle = document.querySelector('.forgot-subtitle');
+        subtitle.insertAdjacentElement('afterend', msgDiv);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+            if (msgDiv && msgDiv.parentNode) msgDiv.remove();
+        }, 5000);
+    }
+    
+    // Real-time validation
+    <?php if ($display_reset_form): ?>
+    const password = document.getElementById('password');
+    const confirmPassword = document.getElementById('confirm_password');
+    
+    if (confirmPassword) {
+        confirmPassword.addEventListener('input', function() {
+            if (password.value !== this.value) {
+                this.style.borderColor = '#dc2626';
+            } else {
+                this.style.borderColor = '#10b981';
+            }
+        });
+    }
+    
+    if (password) {
+        password.addEventListener('input', function() {
+            if (this.value.length > 0 && this.value.length < 6) {
+                this.style.borderColor = '#f59e0b';
+            } else if (this.value.length >= 6) {
+                this.style.borderColor = '#10b981';
+            } else {
+                this.style.borderColor = '#e5e7eb';
+            }
+        });
+    }
+    <?php else: ?>
+    const email = document.getElementById('email');
+    if (email) {
+        email.addEventListener('input', function() {
+            const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.value);
+            if (this.value.length > 0 && !isValid) {
+                this.style.borderColor = '#f59e0b';
+            } else if (isValid) {
+                this.style.borderColor = '#10b981';
+            } else {
+                this.style.borderColor = '#e5e7eb';
+            }
+        });
+    }
+    <?php endif; ?>
+    
+    // Remove message when user starts typing
+    const inputs = document.querySelectorAll('.form-input');
+    inputs.forEach(input => {
+        input.addEventListener('focus', function() {
+            const msg = document.querySelector('.message');
+            if (msg) msg.remove();
+        });
+    });
     
     // Reset loading state if user navigates back
     window.addEventListener('pageshow', function() {
