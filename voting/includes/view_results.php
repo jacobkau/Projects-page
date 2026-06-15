@@ -127,12 +127,12 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         .section-title h2 {
             font-size: 24px;
             font-weight: 700;
-            color: white;
+            color: black;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
         
         .section-title p {
-            color: rgba(255,255,255,0.8);
+            color: #333;
             font-size: 14px;
         }
         
