@@ -9,6 +9,7 @@ if (empty($_SESSION["username"])) {
 }
 
 $message = "";
+$messageType = "";
 $username = $_SESSION["username"];
 
 // Fetch user data using PDO
@@ -24,17 +25,16 @@ try {
     $stmt->closeCursor();
 } catch (Exception $e) {
     error_log("Profile fetch error: " . $e->getMessage());
-    echo "<h3 style='background-color:#ff784a;padding:10px'>Error fetching profile: " . htmlspecialchars($e->getMessage()) . "</h3>";
-    exit;
+    $errorMessage = "Error fetching profile: " . htmlspecialchars($e->getMessage());
 }
 
 // Handle form submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $name = $_POST['name'];
-    $email = $_POST['email'];
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
     
     // Handle password update
-    $password = $row['password']; // Default to existing password
+    $password = $row['password'];
     if (!empty($_POST['password'])) {
         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
     }
@@ -48,304 +48,305 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $fileExt = strtolower(pathinfo($_FILES['profile_photo']['name'], PATHINFO_EXTENSION));
 
         if (in_array($fileExt, $allowedTypes)) {
-            // Check file size (limit to 2MB)
             if ($_FILES['profile_photo']['size'] <= 2 * 1024 * 1024) {
                 $profilePhotoBlob = file_get_contents($_FILES['profile_photo']['tmp_name']);
                 $profilePhotoType = $fileExt;
-                $message = "<h3 style='background-color:#60964c;padding:10px'>Profile photo updated successfully</h3>";
+                $message = "Profile photo updated successfully!";
+                $messageType = "success";
             } else {
-                $message = "<h3 style='background-color:#ff784a;padding:10px'>File is too large. Maximum size is 2MB.</h3>";
+                $message = "File is too large. Maximum size is 2MB.";
+                $messageType = "error";
             }
         } else {
-            $message = "<h3 style='background-color:#ff784a;padding:10px'>Invalid image type. Only JPG, PNG, and GIF are allowed.</h3>";
+            $message = "Invalid image type. Only JPG, PNG, and GIF are allowed.";
+            $messageType = "error";
         }
     }
 
-    // Update user data using PDO
+    // Update user data
     try {
-        // First, check if BLOB columns exist
-        try {
-            $checkColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'profile_photo_blob'");
-            if ($checkColumn->rowCount() == 0) {
-                $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_blob LONGBLOB");
-                $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_type VARCHAR(10)");
-            }
-        } catch (PDOException $e) {
-            error_log("Note: " . $e->getMessage());
+        $checkColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'profile_photo_blob'");
+        if ($checkColumn->rowCount() == 0) {
+            $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_blob LONGBLOB");
+            $conn->exec("ALTER TABLE users ADD COLUMN profile_photo_type VARCHAR(10)");
         }
         
-        // Update query based on your actual table columns
         $stmt_update = $conn->prepare("UPDATE users SET name = ?, email = ?, password = ?, profile_photo_blob = ?, profile_photo_type = ? WHERE username = ?");
         
         if ($stmt_update->execute([$name, $email, $password, $profilePhotoBlob, $profilePhotoType, $username])) {
-            $message = "<h3 style='background-color:#60964c;padding:10px'>Profile updated successfully</h3>";
-            // Update session variables
+            $message = "Profile updated successfully!";
+            $messageType = "success";
             $_SESSION['full_name'] = $name;
             $_SESSION['email'] = $email;
+            
+            // Refresh user data
+            $refreshStmt = $conn->prepare("SELECT * FROM users WHERE username = ?");
+            $refreshStmt->execute([$username]);
+            $row = $refreshStmt->fetch(PDO::FETCH_ASSOC);
         } else {
             throw new Exception("Update failed");
         }
         $stmt_update->closeCursor();
     } catch (Exception $e) {
         error_log("Profile update error: " . $e->getMessage());
-        $message = "<h3 style='background-color:#ff784a;padding:10px'>Error updating profile: " . htmlspecialchars($e->getMessage()) . "</h3>";
+        $message = "Error updating profile: " . htmlspecialchars($e->getMessage());
+        $messageType = "error";
     }
 }
 
-// Helper function to get profile image
 function getProfileImage($row) {
     if (!empty($row['profile_photo_blob'])) {
         return 'data:image/' . $row['profile_photo_type'] . ';base64,' . base64_encode($row['profile_photo_blob']);
     }
-    return 'default.jpg';
+    return 'default-avatar.png';
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>OVMS | Profile</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="An online Voting Management System.">
-    <meta name="keywords" content="portfolio, projects, web development, design">
-    <meta name="author" content="Jacob Witty">
-    <link rel="icon" href="logo.jpg" type="image/x-icon">
-    <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
-            padding: 0; 
-            background-color: #f4f4f4; 
-        }
-        
-        .navbar { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            padding: 15px 20px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            flex-wrap: wrap;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .navbar .title h1 { 
-            margin: 0; 
-            font-size: 1.5rem; 
-        }
-        
-        .navbar .links { 
-            display: flex; 
-            flex-wrap: wrap; 
-            gap: 10px;
-        }
-        
-        .navbar a { 
-            color: white; 
-            text-decoration: none; 
-            padding: 8px 15px;
-            border-radius: 5px;
-            transition: background-color 0.3s;
-        }
-        
-        .navbar a:hover {
-            background-color: rgba(255,255,255,0.2);
-        }
-        
+<?php include("header.php"); ?>
+
+<style>
+    .profile-container {
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: white;
+        padding: 35px;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    .profile-container h1 {
+        color: #333;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 28px;
+    }
+
+    .profile-image {
+        text-align: center;
+        margin-bottom: 25px;
+    }
+    
+    .profile-container img {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #667eea;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .profile-form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .profile-form label {
+        margin-top: 18px;
+        font-weight: 600;
+        color: #374151;
+        margin-bottom: 5px;
+    }
+
+    .profile-form input[type="text"],
+    .profile-form input[type="email"],
+    .profile-form input[type="password"],
+    .profile-form input[type="file"] {
+        padding: 12px 15px;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        font-size: 14px;
+        transition: all 0.3s;
+        font-family: inherit;
+    }
+    
+    .profile-form input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+    }
+    
+    .profile-form input[readonly] {
+        background-color: #f9fafb;
+        cursor: not-allowed;
+    }
+
+    .profile-form input[type="file"] {
+        padding: 10px 15px;
+        background: #f9fafb;
+    }
+
+    .submit-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 14px 20px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-top: 25px;
+        font-size: 16px;
+        font-weight: 600;
+        transition: all 0.3s;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .submit-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(102,126,234,0.4);
+    }
+    
+    .submit-btn.loading {
+        opacity: 0.7;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .submit-btn.loading:hover {
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .submit-btn .spinner {
+        display: none;
+        width: 20px;
+        height: 20px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 0.8s linear infinite;
+    }
+    
+    .submit-btn.loading .spinner {
+        display: inline-block;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .file-hint {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-top: 5px;
+    }
+    
+    .message {
+        padding: 15px 20px;
+        border-radius: 12px;
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .message.success {
+        background-color: #d1fae5;
+        color: #065f46;
+        border-left: 4px solid #10b981;
+    }
+    
+    .message.error {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border-left: 4px solid #dc2626;
+    }
+    
+    @media (max-width: 768px) {
         .profile-container {
-            width: 90%;
-            max-width: 600px;
-            margin: 40px auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            margin: 20px;
+            padding: 20px;
         }
-
         .profile-container h1 {
-            color: #333;
-            margin-bottom: 20px;
-            text-align: center;
+            font-size: 24px;
         }
-
-        .profile-image {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
         .profile-container img {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid #667eea;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100px;
+            height: 100px;
         }
+    }
+</style>
 
-        .profile-form {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .profile-form label {
-            margin-top: 15px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .profile-form input[type="text"],
-        .profile-form input[type="email"],
-        .profile-form input[type="password"],
-        .profile-form input[type="file"] {
-            padding: 12px;
-            margin-top: 5px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        
-        .profile-form input[type="text"]:focus,
-        .profile-form input[type="email"]:focus,
-        .profile-form input[type="password"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .profile-form input[readonly] {
-            background-color: #f5f5f5;
-            cursor: not-allowed;
-        }
-
-        .profile-form input[type="submit"] {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-top: 25px;
-            font-size: 16px;
-            font-weight: 600;
-            transition: transform 0.2s;
-        }
-
-        .profile-form input[type="submit"]:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        
-        footer { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            text-align: center; 
-            padding: 20px; 
-            margin-top: 40px; 
-        }
-        
-        footer ul { 
-            list-style: none; 
-            padding: 0; 
-            margin: 0 0 10px 0;
-        }
-        
-        footer li { 
-            display: inline; 
-            margin: 0 15px; 
-        }
-        
-        footer a { 
-            color: white; 
-            text-decoration: none; 
-        }
-        
-        footer a:hover {
-            text-decoration: underline;
-        }
-        
-        .message {
-            margin-bottom: 20px;
-            border-radius: 6px;
-        }
-        
-        @media (max-width: 768px) { 
-            .navbar {
-                flex-direction: column;
-                text-align: center;
-                gap: 10px;
-            }
-            .profile-container { 
-                width: 95%;
-                padding: 20px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <div class="navbar">
-            <div class="title">
-                <h1>Online Voting Management System</h1>
-            </div>
-            <div class="links">
-                <a href="index.php">All Votes</a>
-                <a href="vote.php">Vote</a>
-                <a href="apply.php" class="active">Contest</a>
-                <a href="contest.php">Contesters</a>
-                <a href="members.php">Reg. Voters</a>
-                <a href="my_applications.php">My applications</a>
-                <a href="profile.php">My Profile</a>
-                <a href="logout.php">Log out</a>
-            </div>
+<div class="profile-container">
+    <h1><i class="fas fa-user-circle"></i> My Profile</h1>
+    
+    <?php if (!empty($message)): ?>
+        <div class="message <?php echo $messageType; ?>">
+            <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+            <?php echo $message; ?>
         </div>
-    </header>
-
-    <div class="profile-container">
-        <h1>Update Profile</h1>
-        
-        <?php if (!empty($message)): ?>
-            <div class="message"><?php echo $message; ?></div>
-        <?php endif; ?>
-        
-        <div class="profile-image">
-            <img src="<?php echo getProfileImage($row); ?>" alt="Profile Photo">
-        </div>
-        
-        <form method="post" action="profile.php" class="profile-form" enctype="multipart/form-data">
-            <label for="profile_photo">Profile Photo:</label>
-            <input type="file" name="profile_photo" id="profile_photo" accept="image/*">
-            <small style="color: #666; margin-top: 5px;">Accepted formats: JPG, PNG, GIF (Max 2MB)</small>
-            
-            <label for="username">Username:</label>
-            <input type="text" name="username" id="username" value="<?php echo htmlspecialchars($username); ?>" readonly>
-            
-            <label for="name">Full Name:</label>
-            <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($row["name"] ?? ''); ?>" required>
-            
-            <label for="email">Email:</label>
-            <input type="email" name="email" id="email" value="<?php echo htmlspecialchars($row["email"] ?? ''); ?>" required>
-            
-            <label for="password">New Password (leave blank to keep current):</label>
-            <input type="password" name="password" id="password" placeholder="Enter new password if you want to change it">
-            
-            <input type="submit" value="Update Profile">
-        </form>
+    <?php endif; ?>
+    
+    <div class="profile-image">
+        <img src="<?php echo getProfileImage($row); ?>" alt="Profile Photo" id="profilePreview">
     </div>
+    
+    <form method="post" action="profile.php" class="profile-form" enctype="multipart/form-data" id="profileForm">
+        <label for="profile_photo"><i class="fas fa-camera"></i> Profile Photo:</label>
+        <input type="file" name="profile_photo" id="profile_photo" accept="image/*">
+        <div class="file-hint"><i class="fas fa-info-circle"></i> Accepted formats: JPG, PNG, GIF (Max 2MB)</div>
+        
+        <label for="username"><i class="fas fa-user"></i> Username:</label>
+        <input type="text" name="username" id="username" value="<?php echo htmlspecialchars($username); ?>" readonly>
+        
+        <label for="name"><i class="fas fa-signature"></i> Full Name:</label>
+        <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($row["name"] ?? ''); ?>" required>
+        
+        <label for="email"><i class="fas fa-envelope"></i> Email:</label>
+        <input type="email" name="email" id="email" value="<?php echo htmlspecialchars($row["email"] ?? ''); ?>" required>
+        
+        <label for="password"><i class="fas fa-lock"></i> New Password:</label>
+        <input type="password" name="password" id="password" placeholder="Leave blank to keep current password">
+        <div class="file-hint">Enter a new password only if you want to change it</div>
+        
+        <button type="submit" class="submit-btn" id="submitBtn">
+            <i class="fas fa-save"></i>
+            <span class="btn-text">Update Profile</span>
+            <span class="spinner"></span>
+        </button>
+    </form>
+</div>
 
-    <footer>
-        <div>
-            <h3>Faster links</h3>
-            <ul>
-                <li><a href="index.php">Home</a></li>
-                <li><a href="vote.php">Vote</a></li>
-                <li><a href="profile.php">Profile</a></li>
-                <li><a href="logout.php">Log out</a></li>
-            </ul>
-        </div>
-        <div style="text-align: center; padding: 10px; background-color: rgba(0,0,0,0.2); font-size: 0.8em; margin-top: 10px;">
-            &copy; <?php echo date("Y"); ?> Jacob witty. All rights reserved.
-        </div>
-    </footer>
-</body>
-</html>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('profileForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const fileInput = document.getElementById('profile_photo');
+    const profilePreview = document.getElementById('profilePreview');
+    
+    // Image preview
+    if (fileInput) {
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && profilePreview) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    profilePreview.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+    
+    // Form submission with loading state
+    if (form && submitBtn) {
+        form.addEventListener('submit', function() {
+            submitBtn.classList.add('loading');
+            submitBtn.disabled = true;
+            return true;
+        });
+    }
+    
+    // Reset loading state if user navigates back
+    window.addEventListener('pageshow', function() {
+        if (submitBtn) {
+            submitBtn.classList.remove('loading');
+            submitBtn.disabled = false;
+        }
+    });
+});
+</script>
+
+<?php include("footer.php"); ?>
