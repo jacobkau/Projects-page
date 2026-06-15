@@ -16,6 +16,22 @@ try {
     error_log("Error fetching elections: " . $e->getMessage());
     $elections = [];
 }
+
+// Helper function to get candidate image
+function getCandidateImage($candidate) {
+    // Check for BLOB image first
+    if (!empty($candidate['profile_photo_blob'])) {
+        return 'data:image/' . $candidate['profile_photo_type'] . ';base64,' . base64_encode($candidate['profile_photo_blob']);
+    }
+    // Check for file-based image
+    elseif (!empty($candidate['profile_photo']) && file_exists('faces/' . $candidate['profile_photo'])) {
+        return 'faces/' . htmlspecialchars($candidate['profile_photo']);
+    }
+    // Return default image
+    else {
+        return 'faces/default.jpg';
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -33,18 +49,19 @@ try {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             margin: 0; 
             padding: 0; 
-            background-color: #f4f4f4; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         
         .navbar { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             color: white; 
             padding: 15px 20px; 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
             flex-wrap: wrap;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
         }
         
         .navbar .title h1 { 
@@ -66,7 +83,8 @@ try {
             transition: background-color 0.3s;
         }
         
-        .navbar a:hover {
+        .navbar a:hover,
+        .navbar a.active { 
             background-color: rgba(255,255,255,0.2);
         }
         
@@ -76,14 +94,15 @@ try {
             margin: 20px auto; 
             background-color: white; 
             padding: 30px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+            border-radius: 16px; 
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2); 
         }
         
         .votes-container h1 {
             color: #333;
             margin-bottom: 30px;
             text-align: center;
+            font-size: 32px;
         }
         
         .votes-container h2 {
@@ -98,6 +117,7 @@ try {
             color: #764ba2;
             margin-top: 25px;
             margin-bottom: 15px;
+            font-size: 20px;
         }
         
         .votes-table { 
@@ -106,6 +126,8 @@ try {
             margin-top: 20px;
             margin-bottom: 30px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            overflow: hidden;
         }
         
         .votes-table th, 
@@ -126,19 +148,53 @@ try {
         }
         
         .candidate-image {
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #667eea;
+            border: 3px solid #667eea;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .winner-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+            color: white;
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            margin-left: 10px;
+        }
+        
+        .vote-count {
+            font-size: 18px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .percentage-bar {
+            background: #e5e7eb;
+            border-radius: 10px;
+            height: 8px;
+            width: 100%;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        .percentage-fill {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
         }
         
         footer { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgba(0,0,0,0.2);
             color: white; 
             text-align: center; 
             padding: 20px; 
-            margin-top: 40px; 
+            margin-top: 40px;
+            backdrop-filter: blur(10px);
         }
         
         footer ul { 
@@ -164,8 +220,15 @@ try {
         .no-data {
             text-align: center;
             color: #999;
-            padding: 40px;
+            padding: 60px;
             font-style: italic;
+            background: white;
+            border-radius: 16px;
+        }
+        
+        .crown-icon {
+            color: #f59e0b;
+            margin-right: 5px;
         }
         
         @media (max-width: 768px) { 
@@ -183,6 +246,10 @@ try {
                 padding: 8px;
                 font-size: 14px;
             }
+            .candidate-image {
+                width: 40px;
+                height: 40px;
+            }
         }
     </style>
 </head>
@@ -193,11 +260,10 @@ try {
                 <h1>Online Voting Management System</h1>
             </div>
             <div class="links">
-                <a href="index.php">All Votes</a>
+                <a href="index.php" class="active">All Votes</a>
                 <a href="vote.php">Vote</a>
-                <a href="apply.php">Contest</a>
+                <a href="apply.php">Candidacy Appli.</a>
                 <a href="contest.php">Contesters</a>
-                <a href="members.php">Reg. Voters</a>
                 <a href="my_applications.php">My applications</a>
                 <a href="profile.php">My Profile</a>
                 <a href="logout.php">Log out</a>
@@ -206,10 +272,11 @@ try {
     </header>
 
     <div class="votes-container">
-        <h1>Voting Results</h1>
+        <h1><i class="fas fa-chart-bar"></i> Elections Results</h1>
 
         <?php if (empty($elections)): ?>
             <div class="no-data">
+                <i class="fas fa-vote-yea" style="font-size: 48px; color: #cbd5e1;"></i>
                 <p>No elections available at this time.</p>
                 <p>Please check back later for upcoming elections.</p>
             </div>
@@ -217,67 +284,97 @@ try {
             <?php foreach ($elections as $election): 
                 $electionId = $election['id']; 
             ?>
-                <h2><?php echo htmlspecialchars($election['title']); ?></h2>
+                <h2><i class="fas fa-poll"></i> <?php echo htmlspecialchars($election['title']); ?></h2>
 
                 <?php
-                // Fetch distinct posts for the current election using PDO
+                // Fetch distinct posts for the current election
                 try {
-                    $postQuery = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
+                    // First try to get posts from election_posts table
+                    $postQuery = $conn->prepare("SELECT DISTINCT postname FROM election_posts WHERE election_id = ? ORDER BY postname");
                     $postQuery->execute([$electionId]);
                     $posts = $postQuery->fetchAll(PDO::FETCH_ASSOC);
                     
+                    // If no posts in election_posts, get from contesters
+                    if (empty($posts)) {
+                        $postQuery2 = $conn->prepare("SELECT DISTINCT postname FROM contesters WHERE election_id = ? ORDER BY postname");
+                        $postQuery2->execute([$electionId]);
+                        $posts = $postQuery2->fetchAll(PDO::FETCH_ASSOC);
+                    }
+                    
                     if (empty($posts)): 
                 ?>
-                        <p style="color: #999; font-style: italic;">No posts available for this election.</p>
+                        <p style="color: #999; font-style: italic;">No positions available for this election.</p>
                     <?php else: ?>
                         <?php foreach ($posts as $post): 
                             $postName = $post['postname']; 
                         ?>
-                            <h3><?php echo htmlspecialchars($postName); ?></h3>
+                            <h3><i class="fas fa-user-tie"></i> <?php echo htmlspecialchars($postName); ?></h3>
                             <table class="votes-table">
                                 <thead>
                                     <tr>
-                                        <th>Photo</th>
+                                        <th style="width: 80px;">Photo</th>
                                         <th>Candidate Name</th>
-                                        <th>Votes</th>
+                                        <th style="width: 150px;">Votes</th>
+                                        <th>Percentage</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php
                                     // Fetch contestants and votes for the current post and election
-                                    $candidateQuery = $conn->prepare("SELECT name, votes, profile_photo FROM contesters WHERE postname = ? AND election_id = ? ORDER BY votes DESC");
+                                    // Include BLOB columns for image retrieval
+                                    $candidateQuery = $conn->prepare("
+                                        SELECT id, name, votes, profile_photo, profile_photo_blob, profile_photo_type 
+                                        FROM contesters 
+                                        WHERE postname = ? AND election_id = ? 
+                                        ORDER BY votes DESC
+                                    ");
                                     $candidateQuery->execute([$postName, $electionId]);
                                     $candidates = $candidateQuery->fetchAll(PDO::FETCH_ASSOC);
+                                    
+                                    // Calculate total votes for this position
+                                    $totalVotes = array_sum(array_column($candidates, 'votes'));
                                     
                                     if (empty($candidates)):
                                     ?>
                                         <tr>
-                                            <td colspan="3" style="text-align: center;">No candidates for this position</td>
+                                            <td colspan="4" style="text-align: center;">No candidates for this position</td>
                                         </tr>
                                     <?php else: ?>
-                                        <?php foreach ($candidates as $candidate): ?>
-                                            <tr>
-                                                <td>
-                                                    <?php if (!empty($candidate['profile_photo'])): ?>
-                                                        <img src="faces/<?php echo htmlspecialchars($candidate['profile_photo']); ?>" alt="Candidate" class="candidate-image">
-                                                    <?php else: ?>
-                                                        <img src="faces/default.jpg" alt="Default" class="candidate-image">
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><?php echo htmlspecialchars($candidate['name']); ?></td>
-                                                <td>
-                                                    <strong><?php echo intval($candidate['votes']); ?></strong>
-                                                    <?php 
-                                                    // Calculate total votes for this position to show percentage
-                                                    $totalQuery = $conn->prepare("SELECT SUM(votes) as total FROM contesters WHERE postname = ? AND election_id = ?");
-                                                    $totalQuery->execute([$postName, $electionId]);
-                                                    $totalResult = $totalQuery->fetch(PDO::FETCH_ASSOC);
-                                                    $totalVotes = $totalResult['total'] ?? 0;
-                                                    if ($totalVotes > 0) {
-                                                        $percentage = ($candidate['votes'] / $totalVotes) * 100;
-                                                        echo " <span style='color: #666; font-size: 12px;'>(" . number_format($percentage, 1) . "%)</span>";
+                                        <?php foreach ($candidates as $index => $candidate): 
+                                            $isWinner = ($index === 0 && $totalVotes > 0);
+                                            $percentage = ($totalVotes > 0) ? ($candidate['votes'] / $totalVotes) * 100 : 0;
+                                        ?>
+                                            <tr style="<?php echo $isWinner ? 'background: linear-gradient(90deg, #d1fae5 0%, #a7f3d0 100%);' : ''; ?>">
+                                                <td style="text-align: center;">
+                                                    <?php
+                                                    // Display image from BLOB or file
+                                                    if (!empty($candidate['profile_photo_blob'])) {
+                                                        echo '<img src="data:image/' . $candidate['profile_photo_type'] . ';base64,' . base64_encode($candidate['profile_photo_blob']) . '" alt="Candidate" class="candidate-image">';
+                                                    } elseif (!empty($candidate['profile_photo']) && file_exists('faces/' . $candidate['profile_photo'])) {
+                                                        echo '<img src="faces/' . htmlspecialchars($candidate['profile_photo']) . '" alt="Candidate" class="candidate-image">';
+                                                    } else {
+                                                        echo '<img src="faces/default.jpg" alt="Default" class="candidate-image">';
                                                     }
                                                     ?>
+                                                </td>
+                                                <td>
+                                                    <strong><?php echo htmlspecialchars($candidate['name']); ?></strong>
+                                                    <?php if ($isWinner): ?>
+                                                        <span class="winner-badge">
+                                                            <i class="fas fa-crown"></i> Winner
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <span class="vote-count"><?php echo number_format($candidate['votes']); ?></span> votes
+                                                </td>
+                                                <td>
+                                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                                        <div class="percentage-bar" style="flex: 1;">
+                                                            <div class="percentage-fill" style="width: <?php echo $percentage; ?>%;"></div>
+                                                        </div>
+                                                        <span style="font-size: 14px; color: #666; min-width: 45px;"><?php echo number_format($percentage, 1); ?>%</span>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
@@ -286,7 +383,6 @@ try {
                             </table>
                         <?php endforeach; ?>
                     <?php endif; ?>
-                    <?php $postQuery->closeCursor(); ?>
                 <?php } catch (PDOException $e) {
                     error_log("Error fetching posts/candidates: " . $e->getMessage());
                     echo "<p style='color: red;'>Error loading results for this election.</p>";
@@ -297,6 +393,7 @@ try {
 
     <footer>
         <div>
+            <h3>Faster Links</h3>
             <ul>
                 <li><a href="index.php">Home</a></li>
                 <li><a href="vote.php">Vote</a></li>
@@ -305,7 +402,7 @@ try {
                 <li><a href="logout.php">Log out</a></li>
             </ul>
         </div>
-        <div style="text-align: center; padding: 10px; background-color: rgba(0,0,0,0.2); font-size: 0.8em; margin-top: 10px;">
+        <div>
             &copy; <?php echo date("Y"); ?> Jacob Witty. All rights reserved.
         </div>
     </footer>
