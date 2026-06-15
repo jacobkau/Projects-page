@@ -31,7 +31,6 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             flex-wrap: wrap;
             gap: 20px;
             margin-bottom: 40px;
-            border: 1px solid #333;
         }
         
         .stat-card {
@@ -419,7 +418,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         <?php else: ?>
             <!-- Second Row: Statistics Overview (Flex) -->
-            <div class="stats-grid" style="border: 1px solid #333;">
+            <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
                     <div class="stat-value"><?php echo count($elections); ?></div>
@@ -458,7 +457,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
             
             <!-- Third Row: Elections List -->
-            <div class="elections-section" style="border: 1px solid #333;">
+            <div class="elections-section">
                 <div class="section-title">
                     <h2><i class="fas fa-poll"></i> Elections Results</h2>
                     <p><b>Click on any election to view detailed results</b></p>
