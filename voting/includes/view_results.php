@@ -25,7 +25,23 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-       
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 30px;
+        }
+        
+        .container {
+            max-width: 2400px;
+            margin: 0 auto;
+        }
         
         /* Header - First Row */
         .header {
@@ -109,7 +125,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         
         /* Elections List - Third Row */
         .elections-section {
-            margin-top: 10px;
+            margin-top: 20px;
         }
         
         .section-title {
