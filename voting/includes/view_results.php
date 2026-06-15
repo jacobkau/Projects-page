@@ -132,7 +132,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         .section-title p {
-            color: #333;
+            color: #FF7F50;
             font-size: 14px;
         }
         
@@ -441,8 +441,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="container1">
         <!-- First Row: Header -->
         <div class="header">
-            <h1><i class="fas fa-chart-line"></i> Voting Results Dashboard</h1>
-            <p>Real-time election results and analytics</p>
+            <h1><i class="fas fa-chart-line"></i> Real-time election results and analytics</h1>
         </div>
         
         <?php if (empty($elections)): ?>
@@ -494,7 +493,7 @@ $elections = $electionsStmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="elections-section">
                 <div class="section-title">
                     <h2><i class="fas fa-poll"></i> Elections Results</h2>
-                    <p>Click on any election to view detailed results</p>
+                    <p><b>Click on any election to view detailed results</b></p>
                 </div>
                 
                 <?php foreach ($elections as $index => $election): ?>
