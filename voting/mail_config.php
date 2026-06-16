@@ -62,7 +62,7 @@ function sendEmailWithResend($to, $username, $resetLink) {
     
     // Prepare the email data
     $emailData = [
-        'from' => 'Voting System <onboarding@resend.dev>',
+        'from' => 'Voting System <jacobkau4@gmail.com>',
         'to' => [$to],
         'subject' => $subject,
         'html' => $html
