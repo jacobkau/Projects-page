@@ -3,9 +3,13 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
-ob_start(); 
 
 include("conn.php");
+
+// Include Resend mail config
+if (file_exists(__DIR__ . '/mail_config.php')) {
+    require_once __DIR__ . '/mail_config.php';
+}
 
 $message = "";
 $messageType = "";
@@ -18,7 +22,7 @@ if (isset($_GET['token'])) {
     $token = trim($_GET['token']);
 }
 
-// Handle Forgot Password Request - Moved to top for proper handling
+// Handle Forgot Password Request
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
     $email = trim($_POST['email']);
     
@@ -59,68 +63,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
                 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
                 $host = $_SERVER['HTTP_HOST'];
                 $uri = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
-                $reset_link = "$protocol://$host$uri/forgot_password.php?token=$token";
+                $reset_link = "$protocol://$host$uri/test_reset.php?token=$token";
 
-                // Send email using simple mail function (works on most hosts)
-                $subject = "Password Reset Request - Voting System";
-                $body = "
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Password Reset</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; }
-                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                        .content { padding: 30px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px; }
-                        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }
-                        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-                    </style>
-                </head>
-                <body>
-                    <div class='container'>
-                        <div class='header'>
-                            <h2>🗳️ Voting System Password Reset</h2>
-                        </div>
-                        <div class='content'>
-                            <p>Hello <strong>$username</strong>,</p>
-                            <p>We received a request to reset your password for your Voting System account.</p>
-                            <div style='text-align: center;'>
-                                <a href='$reset_link' class='button'>🔐 Reset Password</a>
-                            </div>
-                            <p>Or copy this link: <br><small>$reset_link</small></p>
-                            <p><strong>Note:</strong> This link will expire in 1 hour.</p>
-                            <p>If you didn't request this, please ignore this email.</p>
-                        </div>
-                        <div class='footer'>
-                            <p>&copy; " . date('Y') . " Voting System. All rights reserved.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                ";
+                // Send email using Resend or fallback
+                $emailSent = false;
                 
-                $headers = "MIME-Version: 1.0" . "\r\n";
-                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
-                $headers .= "Reply-To: support@" . $_SERVER['HTTP_HOST'] . "\r\n";
+                if (function_exists('sendEmailWithResend')) {
+                    $result = sendEmailWithResend($email, $username, $reset_link);
+                    if ($result['success']) {
+                        $emailSent = true;
+                    }
+                }
+                
+                // If Resend failed or not available, try native mail
+                if (!$emailSent) {
+                    $subject = "Password Reset Request - Voting System";
+                    $body = "
+                    <html>
+                    <body>
+                        <h2>Password Reset Request</h2>
+                        <p>Hello <strong>$username</strong>,</p>
+                        <p>Click the link below to reset your password:</p>
+                        <p><a href='$reset_link'>$reset_link</a></p>
+                        <p>This link expires in 1 hour.</p>
+                        <p>If you didn't request this, please ignore this email.</p>
+                    </body>
+                    </html>
+                    ";
+                    
+                    $headers = "MIME-Version: 1.0\r\n";
+                    $headers .= "Content-type:text/html;charset=UTF-8\r\n";
+                    $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
+                    
+                    $emailSent = mail($email, $subject, $body, $headers);
+                }
 
-                if (mail($email, $subject, $body, $headers)) {
+                if ($emailSent) {
                     $message = "✓ A password reset link has been sent to your email. Please check your inbox (and spam folder).";
                     $messageType = "success";
                 } else {
-                    $message = "⚠️ Unable to send reset email. Please try again later or contact support.";
+                    $message = "⚠️ Unable to send reset email. Please try again later.";
                     $messageType = "error";
-                    error_log("Failed to send password reset email to: " . $email);
                 }
             } else {
                 $message = "❌ Email address not found in our records. Please check and try again.";
                 $messageType = "error";
             }
         } catch (PDOException $e) {
-            $message = "❌ An error occurred. Please try again later.";
+            $message = "❌ Database error: " . $e->getMessage();
             $messageType = "error";
-            error_log("Forgot password error: " . $e->getMessage());
         }
     }
 }
@@ -173,9 +164,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                 $messageType = "error";
             }
         } catch (PDOException $e) {
-            $message = "❌ An error occurred. Please try again later.";
+            $message = "❌ Database error: " . $e->getMessage();
             $messageType = "error";
-            error_log("Reset password error: " . $e->getMessage());
         }
     }
 }
@@ -198,429 +188,130 @@ if ($display_reset_form && $token) {
             $display_reset_form = false;
         }
     } catch (PDOException $e) {
-        $message = "❌ An error occurred. Please try again later.";
+        $message = "❌ Database error: " . $e->getMessage();
         $messageType = "error";
         $display_reset_form = false;
     }
 }
 ?>
-
-<?php include("header.php"); ?>
-
-<style>
-    .forgot-container {
-        max-width: 500px;
-        margin: 40px auto;
-        background: white;
-        border-radius: 24px;
-        padding: 40px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-        transition: all 0.3s ease;
-    }
-    
-    body.dark-theme .forgot-container {
-        background: #1e1e2e;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-    }
-    
-    .forgot-title {
-        text-align: center;
-        margin-bottom: 10px;
-        color: #1f2937;
-        font-size: 28px;
-        font-weight: 700;
-        transition: color 0.3s ease;
-    }
-    
-    body.dark-theme .forgot-title {
-        color: #f3f4f6;
-    }
-    
-    .forgot-subtitle {
-        text-align: center;
-        color: #6b7280;
-        font-size: 14px;
-        margin-bottom: 30px;
-        transition: color 0.3s ease;
-    }
-    
-    body.dark-theme .forgot-subtitle {
-        color: #9ca3af;
-    }
-    
-    .message {
-        padding: 15px 20px;
-        border-radius: 12px;
-        margin-bottom: 25px;
-        font-size: 14px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        animation: slideIn 0.3s ease;
-    }
-    
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .message.success {
-        background-color: #d1fae5;
-        color: #065f46;
-        border-left: 4px solid #10b981;
-    }
-    
-    body.dark-theme .message.success {
-        background-color: #064e3b;
-        color: #a7f3d0;
-    }
-    
-    .message.error {
-        background-color: #fee2e2;
-        color: #991b1b;
-        border-left: 4px solid #dc2626;
-    }
-    
-    body.dark-theme .message.error {
-        background-color: #7f1d1d;
-        color: #fecaca;
-    }
-    
-    .message.info {
-        background-color: #dbeafe;
-        color: #1e40af;
-        border-left: 4px solid #3b82f6;
-    }
-    
-    body.dark-theme .message.info {
-        background-color: #1e3a5f;
-        color: #93c5fd;
-    }
-    
-    .form-group {
-        margin-bottom: 25px;
-    }
-    
-    .form-label {
-        display: block;
-        margin-bottom: 8px;
-        color: #374151;
-        font-weight: 500;
-        font-size: 14px;
-        transition: color 0.3s ease;
-    }
-    
-    body.dark-theme .form-label {
-        color: #e5e7eb;
-    }
-    
-    .form-label i {
-        margin-right: 8px;
-        color: #667eea;
-    }
-    
-    .form-input {
-        width: 100%;
-        padding: 14px 16px;
-        border: 2px solid #e5e7eb;
-        border-radius: 12px;
-        font-size: 15px;
-        transition: all 0.3s;
-        font-family: inherit;
-        background: white;
-    }
-    
-    body.dark-theme .form-input {
-        background: #2d2d3d;
-        border-color: #3d3d4d;
-        color: #f3f4f6;
-    }
-    
-    .form-input:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    .form-input.error {
-        border-color: #dc2626;
-    }
-    
-    .form-input.valid {
-        border-color: #10b981;
-    }
-    
-    .form-button {
-        width: 100%;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 14px;
-        border: none;
-        border-radius: 12px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-    }
-    
-    .form-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-    }
-    
-    .form-button:active {
-        transform: translateY(0);
-    }
-    
-    .form-button.loading {
-        opacity: 0.7;
-        cursor: not-allowed;
-        transform: none;
-    }
-    
-    .form-button.loading:hover {
-        transform: none;
-        box-shadow: none;
-    }
-    
-    .form-button .spinner {
-        display: none;
-        width: 20px;
-        height: 20px;
-        border: 2px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: white;
-        animation: spin 0.8s linear infinite;
-    }
-    
-    .form-button.loading .spinner {
-        display: inline-block;
-    }
-    
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
-    
-    .login-links {
-        text-align: center;
-        margin-top: 25px;
-        padding-top: 20px;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    body.dark-theme .login-links {
-        border-top-color: #3d3d4d;
-    }
-    
-    .login-links a {
-        color: #667eea;
-        text-decoration: none;
-        font-size: 14px;
-        margin: 0 10px;
-        transition: color 0.3s;
-    }
-    
-    .login-links a:hover {
-        color: #764ba2;
-        text-decoration: underline;
-    }
-    
-    @media (max-width: 768px) {
-        .forgot-container {
-            margin: 20px;
-            padding: 30px 25px;
-        }
-        .forgot-title {
-            font-size: 24px;
-        }
-    }
-</style>
-
-<div class="forgot-container">
-    <h1 class="forgot-title">
-        <i class="fas <?php echo $display_reset_form ? 'fa-key' : 'fa-envelope'; ?>"></i>
-        <?php echo $display_reset_form ? "Reset Password" : "Forgot Password"; ?>
-    </h1>
-    <p class="forgot-subtitle">
-        <?php echo $display_reset_form ? "Enter your new password below" : "Enter your email to receive a password reset link"; ?>
-    </p>
-    
-    <?php if (!empty($message)): ?>
-        <div class="message <?php echo $messageType; ?>" id="statusMessage">
-            <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : ($messageType == 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'); ?>"></i>
-            <?php echo $message; ?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title><?php echo $display_reset_form ? "Reset Password" : "Forgot Password"; ?></title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { max-width: 500px; width: 100%; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 28px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }
+        .message { padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-weight: 500; display: flex; align-items: center; gap: 10px; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .message.success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+        .message.error { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: 600; color: #333; margin-bottom: 5px; }
+        label i { color: #667eea; margin-right: 8px; }
+        input[type="email"], input[type="password"] { width: 100%; padding: 14px 16px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; transition: all 0.3s; }
+        input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+        button { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102,126,234,0.4); }
+        button:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .links { text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; }
+        .links a { color: #667eea; text-decoration: none; margin: 0 10px; font-size: 14px; }
+        .links a:hover { text-decoration: underline; }
+        small { color: #666; font-size: 12px; display: block; margin-top: 5px; }
+        .spinner { display: none; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
+        button.loading .spinner { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 480px) { .container { padding: 25px; } h1 { font-size: 24px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas <?php echo $display_reset_form ? 'fa-key' : 'fa-envelope'; ?>"></i> <?php echo $display_reset_form ? "Reset Password" : "Forgot Password"; ?></h1>
+        <p class="subtitle"><?php echo $display_reset_form ? "Enter your new password below" : "Enter your email to receive a reset link"; ?></p>
+        
+        <?php if (!empty($message)): ?>
+            <div class="message <?php echo $messageType; ?>">
+                <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+                <?php echo $message; ?>
+            </div>
+        <?php endif; ?>
+        
+        <form method="post" action="<?php echo $display_reset_form ? 'test_reset.php?token=' . urlencode($token) : 'test_reset.php'; ?>" id="resetForm">
+            <?php if ($display_reset_form) { ?>
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
+                <div class="form-group">
+                    <label for="password"><i class="fas fa-lock"></i> New Password</label>
+                    <input type="password" name="password" id="password" placeholder="Enter new password (min 6 characters)" required>
+                    <small>Password must be at least 6 characters long</small>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password"><i class="fas fa-check-circle"></i> Confirm Password</label>
+                    <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm new password" required>
+                </div>
+                <button type="submit" name="reset_password" id="submitBtn">
+                    <span class="spinner"></span>
+                    <i class="fas fa-save"></i> Reset Password
+                </button>
+            <?php } else { ?>
+                <div class="form-group">
+                    <label for="email"><i class="fas fa-envelope"></i> Email Address</label>
+                    <input type="email" name="email" id="email" placeholder="your@email.com" required>
+                    <small>We'll send a password reset link to this email</small>
+                </div>
+                <button type="submit" name="forgot_password" id="submitBtn">
+                    <span class="spinner"></span>
+                    <i class="fas fa-paper-plane"></i> Send Reset Link
+                </button>
+            <?php } ?>
+        </form>
+        
+        <div class="links">
+            <?php if (!$display_reset_form) { ?>
+                <a href="login.php"><i class="fas fa-sign-in-alt"></i> Login</a>
+                <span>|</span>
+                <a href="register.php"><i class="fas fa-user-plus"></i> Register</a>
+            <?php } else { ?>
+                <a href="login.php"><i class="fas fa-arrow-left"></i> Back to Login</a>
+            <?php } ?>
         </div>
-    <?php endif; ?>
-    
-    <form method="post" action="<?php echo $display_reset_form ? 'forgot_password.php?token=' . urlencode($token) : 'forgot_password.php'; ?>" id="passwordForm">
-        <?php if ($display_reset_form) { ?>
-            <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
-            <div class="form-group">
-                <label for="password" class="form-label">
-                    <i class="fas fa-lock"></i> New Password
-                </label>
-                <input type="password" name="password" id="password" class="form-input" placeholder="Enter new password (min 6 characters)" required>
-                <small style="color: #6b7280; font-size: 12px; margin-top: 5px; display: block;">Password must be at least 6 characters long</small>
-            </div>
-            <div class="form-group">
-                <label for="confirm_password" class="form-label">
-                    <i class="fas fa-check-circle"></i> Confirm Password
-                </label>
-                <input type="password" name="confirm_password" id="confirm_password" class="form-input" placeholder="Confirm new password" required>
-            </div>
-            <button type="submit" name="reset_password" class="form-button" id="submitBtn">
-                <span class="spinner"></span>
-                <span><i class="fas fa-save"></i> Reset Password</span>
-            </button>
-        <?php } else { ?>
-            <div class="form-group">
-                <label for="email" class="form-label">
-                    <i class="fas fa-envelope"></i> Email Address
-                </label>
-                <input type="email" name="email" id="email" class="form-input" placeholder="your@email.com" required>
-                <small style="color: #6b7280; font-size: 12px; margin-top: 5px; display: block;">We'll send a password reset link to this email</small>
-            </div>
-            <button type="submit" name="forgot_password" class="form-button" id="submitBtn">
-                <span class="spinner"></span>
-                <span><i class="fas fa-paper-plane"></i> Send Reset Link</span>
-            </button>
-        <?php } ?>
-    </form>
-    
-    <div class="login-links">
-        <?php if (!$display_reset_form) { ?>
-            <a href="login.php"><i class="fas fa-sign-in-alt"></i> Back to Login</a>
-            <span>|</span>
-            <a href="register.php"><i class="fas fa-user-plus"></i> Create New Account</a>
-        <?php } else { ?>
-            <a href="login.php"><i class="fas fa-arrow-left"></i> Back to Login</a>
-        <?php } ?>
     </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('passwordForm');
-    const submitBtn = document.getElementById('submitBtn');
     
-    if (form && submitBtn) {
-        form.addEventListener('submit', function(e) {
-            <?php if ($display_reset_form): ?>
-            const password = document.getElementById('password');
-            const confirmPassword = document.getElementById('confirm_password');
-            
-            // Reset border colors
-            password.style.borderColor = '#e5e7eb';
-            confirmPassword.style.borderColor = '#e5e7eb';
-            
-            // Validate password length
-            if (password.value.length < 6) {
-                e.preventDefault();
-                password.style.borderColor = '#dc2626';
-                alert('Password must be at least 6 characters long!');
-                return false;
-            }
-            
-            // Validate password match
-            if (password.value !== confirmPassword.value) {
-                e.preventDefault();
-                confirmPassword.style.borderColor = '#dc2626';
-                alert('Passwords do not match!');
-                return false;
-            }
-            <?php else: ?>
-            // Validate email for forgot password form
-            const email = document.getElementById('email');
-            const emailValue = email.value.trim();
-            
-            if (emailValue === '') {
-                e.preventDefault();
-                email.style.borderColor = '#dc2626';
-                alert('Please enter your email address!');
-                return false;
-            }
-            
-            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailPattern.test(emailValue)) {
-                e.preventDefault();
-                email.style.borderColor = '#dc2626';
-                alert('Please enter a valid email address!');
-                return false;
-            }
-            <?php endif; ?>
-            
-            // Show loading state
-            submitBtn.classList.add('loading');
-            submitBtn.disabled = true;
-            return true;
-        });
-    }
-    
-    // Real-time validation
-    <?php if ($display_reset_form): ?>
-    const password = document.getElementById('password');
-    const confirmPassword = document.getElementById('confirm_password');
-    
-    if (confirmPassword) {
-        confirmPassword.addEventListener('input', function() {
-            if (password.value !== this.value) {
-                this.style.borderColor = '#dc2626';
-            } else {
-                this.style.borderColor = '#10b981';
-            }
-        });
-    }
-    
-    if (password) {
-        password.addEventListener('input', function() {
-            if (this.value.length > 0 && this.value.length < 6) {
-                this.style.borderColor = '#f59e0b';
-            } else if (this.value.length >= 6) {
-                this.style.borderColor = '#10b981';
-            } else {
-                this.style.borderColor = '#e5e7eb';
-            }
-        });
-    }
-    <?php else: ?>
-    const email = document.getElementById('email');
-    if (email) {
-        email.addEventListener('input', function() {
-            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            const isValid = emailPattern.test(this.value);
-            if (this.value.length > 0 && !isValid) {
-                this.style.borderColor = '#f59e0b';
-            } else if (isValid) {
-                this.style.borderColor = '#10b981';
-            } else {
-                this.style.borderColor = '#e5e7eb';
-            }
-        });
-    }
-    <?php endif; ?>
-    
-    // Reset loading state if user navigates back
-    window.addEventListener('pageshow', function() {
-        if (submitBtn) {
-            submitBtn.classList.remove('loading');
-            submitBtn.disabled = false;
+    <script>
+    document.getElementById('resetForm').addEventListener('submit', function(e) {
+        const btn = document.getElementById('submitBtn');
+        
+        <?php if ($display_reset_form): ?>
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirm_password');
+        
+        if (password.value.length < 6) {
+            e.preventDefault();
+            alert('Password must be at least 6 characters long!');
+            return false;
         }
+        if (password.value !== confirmPassword.value) {
+            e.preventDefault();
+            alert('Passwords do not match!');
+            return false;
+        }
+        <?php else: ?>
+        const email = document.getElementById('email');
+        if (email.value.trim() === '') {
+            e.preventDefault();
+            alert('Please enter your email address!');
+            return false;
+        }
+        <?php endif; ?>
+        
+        btn.classList.add('loading');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Processing...';
     });
-});
-</script>
-
-<?php include("footer.php");
-ob_end_flush(); // Flush output buffer
-
-?>
+    </script>
+</body>
+</html>
