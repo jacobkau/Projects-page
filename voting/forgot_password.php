@@ -180,8 +180,7 @@ if ($display_reset_form && $token) {
     }
 }
 ?>
-
-<?php include("header.php"); ?>
+    
 
 <style>
     .forgot-container {
@@ -523,4 +522,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php include("footer.php"); ?>
+
