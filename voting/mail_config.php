@@ -1,11 +1,13 @@
 <?php
-// mail_config.php - Using environment variable from Render
+// mail_config.php - Using SendGrid
 
-function sendEmailWithResend($to, $username, $resetLink) {
-    // Get API key from environment variable
-    $apiKey = getenv('RESEND_API_KEY');
+function sendEmailWithSendGrid($to, $username, $resetLink) {
+    $apiKey = getenv('SENDGRID_API_KEY');
     
-  
+    if (empty($apiKey)) {
+        error_log("SENDGRID_API_KEY environment variable is not set!");
+        return ['success' => false, 'message' => 'API key not configured'];
+    }
     
     $subject = "Password Reset - Voting System";
     
@@ -40,32 +42,36 @@ function sendEmailWithResend($to, $username, $resetLink) {
                 <div class='warning'>
                     <strong>⚠️ Important:</strong> This link will expire in <strong>1 hour</strong>.
                 </div>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p><small style='word-break: break-all; color: #667eea;'>" . $resetLink . "</small></p>
-                <p>If you didn't request this password reset, please ignore this email.</p>
+                <p>If you didn't request this, please ignore this email.</p>
                 <hr style='margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;'>
                 <p style='font-size: 12px; color: #6b7280;'>This is an automated message, please do not reply.</p>
             </div>
             <div class='footer'>
                 <p>&copy; " . date('Y') . " Voting System. All rights reserved.</p>
-                <p>Secure voting platform</p>
             </div>
         </div>
     </body>
     </html>
     ";
     
-    // Prepare the email data
     $emailData = [
-        'from' => 'Voting System <onboarding@resend.dev>',
-        'to' => [$to],
-        'subject' => $subject,
-        'html' => $html
+        'personalizations' => [
+            [
+                'to' => [['email' => $to]],
+                'subject' => $subject
+            ]
+        ],
+        'from' => ['email' => 'noreply@yourdomain.com', 'name' => 'Voting System'],
+        'content' => [
+            [
+                'type' => 'text/html',
+                'value' => $html
+            ]
+        ]
     ];
     
-    // Initialize cURL
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, 'https://api.resend.com/emails');
+    curl_setopt($ch, CURLOPT_URL, 'https://api.sendgrid.com/v3/mail/send');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($emailData));
@@ -74,52 +80,37 @@ function sendEmailWithResend($to, $username, $resetLink) {
         'Content-Type: application/json'
     ]);
     
-    // Execute cURL request
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
     curl_close($ch);
     
-    // Log the full response for debugging
-    error_log("Resend API Response: HTTP $httpCode - Response: " . $response);
+    error_log("SendGrid API Response: HTTP $httpCode");
     
-    if ($httpCode === 200) {
-        return ['success' => true, 'message' => 'Password reset email sent successfully!'];
+    if ($httpCode === 202) {
+        return ['success' => true, 'message' => 'Email sent successfully!'];
     } else {
-        $errorMessage = "Failed to send email (HTTP $httpCode)";
+        $errorMsg = "Failed to send email (HTTP $httpCode)";
         if ($response) {
             $decoded = json_decode($response, true);
-            if (isset($decoded['message'])) {
-                $errorMessage .= " - " . $decoded['message'];
+            if (isset($decoded['errors'][0]['message'])) {
+                $errorMsg .= " - " . $decoded['errors'][0]['message'];
             }
         }
-        if ($curlError) {
-            $errorMessage .= " - cURL Error: " . $curlError;
-        }
-        return ['success' => false, 'message' => $errorMessage];
+        return ['success' => false, 'message' => $errorMsg];
     }
 }
 
-// Alternative fallback using native mail() function
+// Fallback function
 function sendEmailFallback($to, $username, $resetLink) {
     $subject = "Password Reset - Voting System";
-    
-    $body = "
-    <html>
-    <body>
-        <h2>Password Reset Request</h2>
-        <p>Hello $username,</p>
-        <p>Click the link below to reset your password:</p>
-        <p><a href='$resetLink'>$resetLink</a></p>
-        <p>This link expires in 1 hour.</p>
-    </body>
-    </html>
-    ";
-    
-    $headers = "MIME-Version: 1.0\r\n";
-    $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-    $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
-    
+    $body = "<html><body><h2>Password Reset</h2><p>Hello $username,</p><p><a href='$resetLink'>$resetLink</a></p><p>Expires in 1 hour.</p></body></html>";
+    $headers = "MIME-Version: 1.0\r\nContent-type: text/html; charset=UTF-8\r\nFrom: noreply@" . $_SERVER['HTTP_HOST'] . "\r\n";
     return mail($to, $subject, $body, $headers);
+}
+
+// Alias for backward compatibility
+function sendEmailWithResend($to, $username, $resetLink) {
+    return sendEmailWithSendGrid($to, $username, $resetLink);
 }
 ?>
