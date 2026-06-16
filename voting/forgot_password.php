@@ -7,7 +7,7 @@ ini_set('display_startup_errors', 1);
 include("conn.php");
 
 if (file_exists(__DIR__ . '/mail_config.php')) {
-    require_once __DIR__ . '/mail_config.php');
+    require_once __DIR__ . '/mail_config.php';
 }
 
 // Handle AJAX request
