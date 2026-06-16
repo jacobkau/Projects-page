@@ -1,10 +1,16 @@
 <?php
 // mail_config.php - Using environment variable from Render
+
 function sendEmailWithResend($to, $username, $resetLink) {
-    // Get API key from environment variable (safer than hardcoding)
+    // Get API key from environment variable
     $apiKey = getenv('RESEND_API_KEY');
     
-    // For local testing, you can use a fallback
+    // If API key is not set in environment, try to use a hardcoded fallback (for testing only)
+    if (empty($apiKey)) {
+        error_log("RESEND_API_KEY environment variable is not set!");
+         $apiKey = 're_f5bm2AgE_2JqwgEypNCgaUDS96SZP51f5'; 
+        return ['success' => false, 'message' => 'API key not configured'];
+    }
     
     $subject = "Password Reset - Voting System";
     
@@ -79,13 +85,23 @@ function sendEmailWithResend($to, $username, $resetLink) {
     $curlError = curl_error($ch);
     curl_close($ch);
     
-    // Log for debugging (optional)
-    error_log("Resend API Response: HTTP $httpCode");
+    // Log the full response for debugging
+    error_log("Resend API Response: HTTP $httpCode - Response: " . $response);
     
     if ($httpCode === 200) {
         return ['success' => true, 'message' => 'Password reset email sent successfully!'];
     } else {
-        return ['success' => false, 'message' => 'Failed to send email. Please try again later.'];
+        $errorMessage = "Failed to send email (HTTP $httpCode)";
+        if ($response) {
+            $decoded = json_decode($response, true);
+            if (isset($decoded['message'])) {
+                $errorMessage .= " - " . $decoded['message'];
+            }
+        }
+        if ($curlError) {
+            $errorMessage .= " - cURL Error: " . $curlError;
+        }
+        return ['success' => false, 'message' => $errorMessage];
     }
 }
 
@@ -107,7 +123,7 @@ function sendEmailFallback($to, $username, $resetLink) {
     
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-    $headers .= "From: noreply@" . $_SERVER['HTTP_HOST'] . "\r\n";
+    $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
     
     return mail($to, $subject, $body, $headers);
 }
