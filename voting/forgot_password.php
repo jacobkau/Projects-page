@@ -3,7 +3,6 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
-ob_start(); 
 
 include("conn.php");
 
@@ -18,7 +17,7 @@ if (isset($_GET['token'])) {
     $token = trim($_GET['token']);
 }
 
-// Handle Forgot Password Request - Moved to top for proper handling
+// Handle Forgot Password Request
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
     $email = trim($_POST['email']);
     
@@ -61,41 +60,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
                 $uri = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 $reset_link = "$protocol://$host$uri/forgot_password.php?token=$token";
 
-                // Send email using simple mail function (works on most hosts)
+                // Send email using simple mail function
                 $subject = "Password Reset Request - Voting System";
                 $body = "
                 <!DOCTYPE html>
                 <html>
-                <head>
-                    <title>Password Reset</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; }
-                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                        .content { padding: 30px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px; }
-                        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }
-                        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-                    </style>
-                </head>
+                <head><title>Password Reset</title></head>
                 <body>
-                    <div class='container'>
-                        <div class='header'>
-                            <h2>🗳️ Voting System Password Reset</h2>
-                        </div>
-                        <div class='content'>
-                            <p>Hello <strong>$username</strong>,</p>
-                            <p>We received a request to reset your password for your Voting System account.</p>
-                            <div style='text-align: center;'>
-                                <a href='$reset_link' class='button'>🔐 Reset Password</a>
-                            </div>
-                            <p>Or copy this link: <br><small>$reset_link</small></p>
-                            <p><strong>Note:</strong> This link will expire in 1 hour.</p>
-                            <p>If you didn't request this, please ignore this email.</p>
-                        </div>
-                        <div class='footer'>
-                            <p>&copy; " . date('Y') . " Voting System. All rights reserved.</p>
-                        </div>
-                    </div>
+                    <h2>Password Reset Request</h2>
+                    <p>Hello <strong>$username</strong>,</p>
+                    <p>Click the link below to reset your password:</p>
+                    <p><a href='$reset_link'>$reset_link</a></p>
+                    <p>This link expires in 1 hour.</p>
+                    <p>If you didn't request this, please ignore this email.</p>
                 </body>
                 </html>
                 ";
@@ -103,7 +80,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
                 $headers = "MIME-Version: 1.0" . "\r\n";
                 $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
                 $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
-                $headers .= "Reply-To: support@" . $_SERVER['HTTP_HOST'] . "\r\n";
 
                 if (mail($email, $subject, $body, $headers)) {
                     $message = "✓ A password reset link has been sent to your email. Please check your inbox (and spam folder).";
@@ -292,17 +268,6 @@ if ($display_reset_form && $token) {
         color: #fecaca;
     }
     
-    .message.info {
-        background-color: #dbeafe;
-        color: #1e40af;
-        border-left: 4px solid #3b82f6;
-    }
-    
-    body.dark-theme .message.info {
-        background-color: #1e3a5f;
-        color: #93c5fd;
-    }
-    
     .form-group {
         margin-bottom: 25px;
     }
@@ -346,14 +311,6 @@ if ($display_reset_form && $token) {
         outline: none;
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    .form-input.error {
-        border-color: #dc2626;
-    }
-    
-    .form-input.valid {
-        border-color: #10b981;
     }
     
     .form-button {
@@ -457,8 +414,8 @@ if ($display_reset_form && $token) {
     </p>
     
     <?php if (!empty($message)): ?>
-        <div class="message <?php echo $messageType; ?>" id="statusMessage">
-            <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : ($messageType == 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'); ?>"></i>
+        <div class="message <?php echo $messageType; ?>">
+            <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
             <?php echo $message; ?>
         </div>
     <?php endif; ?>
@@ -520,33 +477,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const password = document.getElementById('password');
             const confirmPassword = document.getElementById('confirm_password');
             
-            // Reset border colors
-            password.style.borderColor = '#e5e7eb';
-            confirmPassword.style.borderColor = '#e5e7eb';
-            
-            // Validate password length
             if (password.value.length < 6) {
                 e.preventDefault();
-                password.style.borderColor = '#dc2626';
                 alert('Password must be at least 6 characters long!');
                 return false;
             }
             
-            // Validate password match
             if (password.value !== confirmPassword.value) {
                 e.preventDefault();
-                confirmPassword.style.borderColor = '#dc2626';
                 alert('Passwords do not match!');
                 return false;
             }
             <?php else: ?>
-            // Validate email for forgot password form
             const email = document.getElementById('email');
             const emailValue = email.value.trim();
             
             if (emailValue === '') {
                 e.preventDefault();
-                email.style.borderColor = '#dc2626';
                 alert('Please enter your email address!');
                 return false;
             }
@@ -554,7 +501,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailPattern.test(emailValue)) {
                 e.preventDefault();
-                email.style.borderColor = '#dc2626';
                 alert('Please enter a valid email address!');
                 return false;
             }
@@ -567,49 +513,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Real-time validation
-    <?php if ($display_reset_form): ?>
-    const password = document.getElementById('password');
-    const confirmPassword = document.getElementById('confirm_password');
-    
-    if (confirmPassword) {
-        confirmPassword.addEventListener('input', function() {
-            if (password.value !== this.value) {
-                this.style.borderColor = '#dc2626';
-            } else {
-                this.style.borderColor = '#10b981';
-            }
-        });
-    }
-    
-    if (password) {
-        password.addEventListener('input', function() {
-            if (this.value.length > 0 && this.value.length < 6) {
-                this.style.borderColor = '#f59e0b';
-            } else if (this.value.length >= 6) {
-                this.style.borderColor = '#10b981';
-            } else {
-                this.style.borderColor = '#e5e7eb';
-            }
-        });
-    }
-    <?php else: ?>
-    const email = document.getElementById('email');
-    if (email) {
-        email.addEventListener('input', function() {
-            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            const isValid = emailPattern.test(this.value);
-            if (this.value.length > 0 && !isValid) {
-                this.style.borderColor = '#f59e0b';
-            } else if (isValid) {
-                this.style.borderColor = '#10b981';
-            } else {
-                this.style.borderColor = '#e5e7eb';
-            }
-        });
-    }
-    <?php endif; ?>
-    
     // Reset loading state if user navigates back
     window.addEventListener('pageshow', function() {
         if (submitBtn) {
@@ -620,7 +523,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php include("footer.php");
-ob_end_flush(); // Flush output buffer
-
-?>
+<?php include("footer.php"); ?>
