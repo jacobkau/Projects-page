@@ -1,8 +1,9 @@
 <?php
 session_start();
+error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+ob_start(); 
 
 include("conn.php");
 
@@ -619,4 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php include("footer.php"); ?>
+<?php include("footer.php");
+ob_end_flush(); // Flush output buffer
+
+?>
