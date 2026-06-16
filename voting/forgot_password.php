@@ -6,63 +6,25 @@ error_reporting(E_ALL);
 
 include("conn.php");
 
-// Include mail configuration if it exists, otherwise use fallback
-if (file_exists(__DIR__ . '/mail_config.php')) {
-    require_once __DIR__ . '/mail_config.php';
-} else {
-    // Fallback mail function if mail_config.php doesn't exist
-    function sendEmailWithResend($to, $username, $resetLink) {
-        $subject = "Password Reset - Voting System";
-        $body = "
-        <html>
-        <body>
-            <h2>Password Reset Request</h2>
-            <p>Hello <strong>$username</strong>,</p>
-            <p>Click the link below to reset your password:</p>
-            <p><a href='$resetLink'>$resetLink</a></p>
-            <p>This link expires in 1 hour.</p>
-            <p>If you didn't request this, please ignore this email.</p>
-        </body>
-        </html>
-        ";
-        
-        $headers = "MIME-Version: 1.0\r\n";
-        $headers .= "Content-type: text/html; charset=UTF-8\r\n";
-        $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
-        
-        if (mail($to, $subject, $body, $headers)) {
-            return ['success' => true, 'message' => 'Email sent'];
-        } else {
-            return ['success' => false, 'message' => 'Mail failed'];
-        }
-    }
-}
-
 $message = "";
 $messageType = "";
 $display_reset_form = false;
 $token = "";
 
-// Debug flag - set to true to see more details
-$debug = true;
-
 // Check if token is provided in URL
 if (isset($_GET['token'])) {
     $display_reset_form = true;
     $token = trim($_GET['token']);
-    if ($debug) error_log("Token received: " . $token);
 }
 
-// Handle Forgot Password Request
+// Handle Forgot Password Request - Moved to top for proper handling
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
     $email = trim($_POST['email']);
-    if ($debug) error_log("Forgot password request for email: " . $email);
-
+    
     // Validate email
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $message = "❌ Invalid email format. Please enter a valid email address.";
         $messageType = "error";
-        if ($debug) error_log("Invalid email format");
     } else {
         try {
             // Check if email exists
@@ -73,67 +35,91 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['forgot_password'])) {
                 $user = $stmt->fetch(PDO::FETCH_ASSOC);
                 $user_id = $user['id'];
                 $username = $user['username'];
-                if ($debug) error_log("User found: ID=$user_id, Username=$username");
 
                 // Generate a unique token
                 $token = bin2hex(random_bytes(32));
                 $expiry = date('Y-m-d H:i:s', strtotime('+1 hour'));
-                if ($debug) error_log("Generated token: $token, Expires: $expiry");
 
                 // Create password_reset_tokens table if not exists
-                try {
-                    $conn->exec("CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        user_id INT NOT NULL,
-                        token VARCHAR(255) NOT NULL UNIQUE,
-                        expiry DATETIME NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                    )");
-                    if ($debug) error_log("Table checked/created");
-                } catch (PDOException $e) {
-                    if ($debug) error_log("Table creation error: " . $e->getMessage());
-                }
+                $conn->exec("CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    token VARCHAR(255) NOT NULL UNIQUE,
+                    expiry DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )");
 
                 // Store token in database
                 $insertStmt = $conn->prepare("INSERT INTO password_reset_tokens (user_id, token, expiry) VALUES (?, ?, ?)");
                 $insertStmt->execute([$user_id, $token, $expiry]);
-                if ($debug) error_log("Token stored in database");
 
                 // Get the correct base URL
                 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
                 $host = $_SERVER['HTTP_HOST'];
                 $uri = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 $reset_link = "$protocol://$host$uri/forgot_password.php?token=$token";
-                if ($debug) error_log("Reset link: $reset_link");
 
-                // Send email using Resend API or fallback
-                if (function_exists('sendEmailWithResend')) {
-                    $emailResult = sendEmailWithResend($email, $username, $reset_link);
-                    if ($debug) error_log("Email result: " . print_r($emailResult, true));
-                } else {
-                    $emailResult = ['success' => false, 'message' => 'Mail function not available'];
-                    if ($debug) error_log("sendEmailWithResend function not found");
-                }
+                // Send email using simple mail function (works on most hosts)
+                $subject = "Password Reset Request - Voting System";
+                $body = "
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Password Reset</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+                        .content { padding: 30px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px; }
+                        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }
+                        .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='header'>
+                            <h2>🗳️ Voting System Password Reset</h2>
+                        </div>
+                        <div class='content'>
+                            <p>Hello <strong>$username</strong>,</p>
+                            <p>We received a request to reset your password for your Voting System account.</p>
+                            <div style='text-align: center;'>
+                                <a href='$reset_link' class='button'>🔐 Reset Password</a>
+                            </div>
+                            <p>Or copy this link: <br><small>$reset_link</small></p>
+                            <p><strong>Note:</strong> This link will expire in 1 hour.</p>
+                            <p>If you didn't request this, please ignore this email.</p>
+                        </div>
+                        <div class='footer'>
+                            <p>&copy; " . date('Y') . " Voting System. All rights reserved.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                ";
                 
-                if (isset($emailResult['success']) && $emailResult['success'] === true) {
+                $headers = "MIME-Version: 1.0" . "\r\n";
+                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+                $headers .= "From: Voting System <noreply@" . $_SERVER['HTTP_HOST'] . ">\r\n";
+                $headers .= "Reply-To: support@" . $_SERVER['HTTP_HOST'] . "\r\n";
+
+                if (mail($email, $subject, $body, $headers)) {
                     $message = "✓ A password reset link has been sent to your email. Please check your inbox (and spam folder).";
                     $messageType = "success";
-                    if ($debug) error_log("Email sent successfully");
                 } else {
-                    $message = "⚠️ Unable to send reset email. Please contact support or try again later.";
+                    $message = "⚠️ Unable to send reset email. Please try again later or contact support.";
                     $messageType = "error";
-                    if ($debug) error_log("Email failed: " . ($emailResult['message'] ?? 'Unknown error'));
+                    error_log("Failed to send password reset email to: " . $email);
                 }
             } else {
                 $message = "❌ Email address not found in our records. Please check and try again.";
                 $messageType = "error";
-                if ($debug) error_log("Email not found: $email");
             }
         } catch (PDOException $e) {
             $message = "❌ An error occurred. Please try again later.";
             $messageType = "error";
-            if ($debug) error_log("Database error: " . $e->getMessage());
+            error_log("Forgot password error: " . $e->getMessage());
         }
     }
 }
@@ -143,17 +129,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
     $token = trim($_POST['token']);
     $password = trim($_POST['password']);
     $confirm_password = trim($_POST['confirm_password']);
-    
-    if ($debug) error_log("Reset password request for token: $token");
 
     if (strlen($password) < 6) {
         $message = "❌ Password must be at least 6 characters long.";
         $messageType = "error";
-        if ($debug) error_log("Password too short");
     } elseif ($password !== $confirm_password) {
         $message = "❌ Passwords do not match. Please try again.";
         $messageType = "error";
-        if ($debug) error_log("Passwords don't match");
     } else {
         try {
             // Verify token and expiry
@@ -164,40 +146,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password']) && i
                 $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 $user_id = $row['user_id'];
                 $expiry = $row['expiry'];
-                if ($debug) error_log("Token valid for user: $user_id, expires: $expiry");
 
                 if (strtotime(date('Y-m-d H:i:s')) > strtotime($expiry)) {
                     $message = "❌ Password reset link has expired. Please request a new one.";
                     $messageType = "error";
-                    if ($debug) error_log("Token expired");
                 } else {
                     // Update password
                     $password_hash = password_hash($password, PASSWORD_DEFAULT);
                     $updateStmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
                     $updateStmt->execute([$password_hash, $user_id]);
-                    if ($debug) error_log("Password updated for user: $user_id");
 
                     // Delete used token
                     $deleteStmt = $conn->prepare("DELETE FROM password_reset_tokens WHERE token = ?");
                     $deleteStmt->execute([$token]);
-                    if ($debug) error_log("Token deleted");
 
                     $message = "✓ Password reset successfully! Redirecting to login page...";
                     $messageType = "success";
                     $display_reset_form = false;
                     
-                    // Redirect to login after 3 seconds
+                    // Redirect to login after 2 seconds
                     echo "<script>setTimeout(function(){ window.location.href = 'login.php'; }, 2000);</script>";
                 }
             } else {
                 $message = "❌ Invalid password reset link. Please request a new one.";
                 $messageType = "error";
-                if ($debug) error_log("Token not found in database");
             }
         } catch (PDOException $e) {
             $message = "❌ An error occurred. Please try again later.";
             $messageType = "error";
-            if ($debug) error_log("Reset password error: " . $e->getMessage());
+            error_log("Reset password error: " . $e->getMessage());
         }
     }
 }
@@ -213,21 +190,16 @@ if ($display_reset_form && $token) {
                 $message = "❌ This password reset link has expired. Please request a new one.";
                 $messageType = "error";
                 $display_reset_form = false;
-                if ($debug) error_log("Display reset form - token expired");
-            } else {
-                if ($debug) error_log("Display reset form - token valid");
             }
         } else {
             $message = "❌ Invalid password reset link. Please request a new one.";
             $messageType = "error";
             $display_reset_form = false;
-            if ($debug) error_log("Display reset form - token not found");
         }
     } catch (PDOException $e) {
         $message = "❌ An error occurred. Please try again later.";
         $messageType = "error";
         $display_reset_form = false;
-        if ($debug) error_log("Token verification error: " . $e->getMessage());
     }
 }
 ?>
@@ -463,21 +435,6 @@ if ($display_reset_form && $token) {
         text-decoration: underline;
     }
     
-    .debug-info {
-        background: #f3f4f6;
-        padding: 10px;
-        border-radius: 8px;
-        font-size: 11px;
-        margin-top: 15px;
-        font-family: monospace;
-        display: none;
-    }
-    
-    body.dark-theme .debug-info {
-        background: #1f2937;
-        color: #9ca3af;
-    }
-    
     @media (max-width: 768px) {
         .forgot-container {
             margin: 20px;
@@ -503,19 +460,6 @@ if ($display_reset_form && $token) {
             <i class="fas <?php echo $messageType == 'success' ? 'fa-check-circle' : ($messageType == 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'); ?>"></i>
             <?php echo $message; ?>
         </div>
-        
-        <script>
-            // Auto-hide message after 5 seconds
-            setTimeout(function() {
-                const msg = document.getElementById('statusMessage');
-                if (msg) {
-                    msg.style.opacity = '0';
-                    setTimeout(function() {
-                        if (msg.parentNode) msg.remove();
-                    }, 500);
-                }
-            }, 5000);
-        </script>
     <?php endif; ?>
     
     <form method="post" action="<?php echo $display_reset_form ? 'forgot_password.php?token=' . urlencode($token) : 'forgot_password.php'; ?>" id="passwordForm">
@@ -569,37 +513,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('passwordForm');
     const submitBtn = document.getElementById('submitBtn');
     
-    // Function to show message on the page
-    window.showFormMessage = function(message, type) {
-        // Remove existing message
-        const existingMsg = document.querySelector('.message');
-        if (existingMsg) existingMsg.remove();
-        
-        // Create new message
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message ' + type;
-        msgDiv.innerHTML = '<i class="fas ' + (type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle')) + '"></i> ' + message;
-        
-        // Insert after subtitle
-        const subtitle = document.querySelector('.forgot-subtitle');
-        subtitle.insertAdjacentElement('afterend', msgDiv);
-        
-        // Scroll to message
-        msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
-            if (msgDiv && msgDiv.parentNode) {
-                msgDiv.style.opacity = '0';
-                setTimeout(() => {
-                    if (msgDiv.parentNode) msgDiv.remove();
-                }, 500);
-            }
-        }, 5000);
-        
-        return msgDiv;
-    };
-    
     if (form && submitBtn) {
         form.addEventListener('submit', function(e) {
             <?php if ($display_reset_form): ?>
@@ -614,7 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (password.value.length < 6) {
                 e.preventDefault();
                 password.style.borderColor = '#dc2626';
-                showFormMessage('Password must be at least 6 characters long!', 'error');
+                alert('Password must be at least 6 characters long!');
                 return false;
             }
             
@@ -622,7 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (password.value !== confirmPassword.value) {
                 e.preventDefault();
                 confirmPassword.style.borderColor = '#dc2626';
-                showFormMessage('Passwords do not match!', 'error');
+                alert('Passwords do not match!');
                 return false;
             }
             <?php else: ?>
@@ -633,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (emailValue === '') {
                 e.preventDefault();
                 email.style.borderColor = '#dc2626';
-                showFormMessage('Please enter your email address!', 'error');
+                alert('Please enter your email address!');
                 return false;
             }
             
@@ -641,7 +554,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!emailPattern.test(emailValue)) {
                 e.preventDefault();
                 email.style.borderColor = '#dc2626';
-                showFormMessage('Please enter a valid email address!', 'error');
+                alert('Please enter a valid email address!');
                 return false;
             }
             <?php endif; ?>
@@ -695,14 +608,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     <?php endif; ?>
-    
-    // Remove border error when user focuses
-    const inputs = document.querySelectorAll('.form-input');
-    inputs.forEach(input => {
-        input.addEventListener('focus', function() {
-            this.style.borderColor = '#e5e7eb';
-        });
-    });
     
     // Reset loading state if user navigates back
     window.addEventListener('pageshow', function() {
