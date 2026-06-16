@@ -5,12 +5,7 @@ function sendEmailWithResend($to, $username, $resetLink) {
     // Get API key from environment variable
     $apiKey = getenv('RESEND_API_KEY');
     
-    // If API key is not set in environment, try to use a hardcoded fallback (for testing only)
-    if (empty($apiKey)) {
-        error_log("RESEND_API_KEY environment variable is not set!");
-         $apiKey = 're_f5bm2AgE_2JqwgEypNCgaUDS96SZP51f5'; 
-        return ['success' => false, 'message' => 'API key not configured'];
-    }
+  
     
     $subject = "Password Reset - Voting System";
     
@@ -62,7 +57,7 @@ function sendEmailWithResend($to, $username, $resetLink) {
     
     // Prepare the email data
     $emailData = [
-        'from' => 'Voting System <jacobkau4@gmail.com>',
+        'from' => 'Voting System <onboarding@resend.dev>',
         'to' => [$to],
         'subject' => $subject,
         'html' => $html
