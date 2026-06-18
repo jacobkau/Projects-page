@@ -1,11 +1,27 @@
-# Use an official web server that handles PHP, HTML, CSS, and JS
+# Dockerfile
 FROM php:8.4-apache
 
-# Install the drivers needed to talk to external databases
-RUN docker-php-ext-install mysqli pdo pdo_mysql
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip
 
-# Copy all files from your GitHub repository into the server
-COPY . /var/www/html/
+# Clear cache
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Expose port 80 for web traffic
-EXPOSE 80
+# Enable Apache mod_rewrite
+RUN a2enmod rewrite
+
+# Copy application files
+COPY voting/ /var/www/html/
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
+
+EXPOSE 8080
