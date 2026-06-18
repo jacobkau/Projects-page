@@ -1,18 +1,3 @@
 # pxxl.yaml
-type: php
-runtime: php-8.4
-
-# The directory where your PHP files are located
-root: voting
-
-# Build command (if needed)
-build: ""
-
-# Start command
-start: ""
-
-# Environment variables
-env:
-  - SENDGRID_API_KEY: ${SENDGRID_API_KEY}
-  - RESEND_API_KEY: ${RESEND_API_KEY}
-  - AIVEN_DATABASE_URL: ${AIVEN_DATABASE_URL}
+type: docker
+dockerfile: Dockerfile
