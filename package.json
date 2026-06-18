@@ -1,0 +1,8 @@
+{
+  "name": "voting-system",
+  "version": "1.0.0",
+  "description": "Voting Management System PHP Application",
+  "scripts": {
+    "start": "php -S 0.0.0.0:8080 -t voting"
+  }
+}
