@@ -317,6 +317,10 @@
         <div class="container">
             <div class="left-column">
                 <h2>Live Software Development Projects</h2>
+				  <a href="https://witty-chat-app.vercel.app/" target="_blank" class="project-link">
+				    <i class="fa fa-whatsapp"></i>
+					  Witty Chat App
+				  </a>
                 <a href="https://witty-voting-system.onrender.com" target="_blank" class="project-link">
                     <i class="fas fa-vote-yea"></i>
                     Witty Voting System
@@ -350,8 +354,8 @@
                 </a>
             </div>
             <div class="right-column">
-                <h2>About Jacob Witty</h2>
-                <p>Jacob Witty is a passionate web developer with a keen interest in creating efficient and
+                <h2>About Jacob Mwambwa</h2>
+                <p>Jacob Mwambwa is a passionate web developer with a keen interest in creating efficient and
                     user-friendly web applications. His skills span across front-end and back-end development, and he
                     always eager to learn new technologies.</p>
                 <p>Feel free to explore his projects and don't hesitate to reach out for collaborations or inquiries.
@@ -574,12 +578,9 @@
     </footer>
    
     <script>
-        // Theme toggle functionality
         const themeToggle = document.getElementById('themeToggle');
         const body = document.body;
         const icon = themeToggle.querySelector('i');
-
-        // Check for saved theme preference or use preferred color scheme
         const savedTheme = localStorage.getItem('theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -601,21 +602,13 @@
             }
         });
 
-        // Get the modal for the "Read More" section
         var infoModal = document.getElementById("infoModal");
-
-        // Get the button that opens the modal
         var readMoreBtn = document.getElementById("readMoreBtn");
-
-        // Get the <span> element that closes the modal
         var infoSpan = infoModal.getElementsByClassName("close")[0];
 
-        // When the user clicks the button, open the modal
         readMoreBtn.onclick = function() {
             infoModal.style.display = "block";
         }
-
-        // When the user clicks on <span> (x), close the modal
         infoSpan.onclick = function() {
             infoModal.style.display = "none";
         }
@@ -631,7 +624,6 @@
             infoModal2.style.display = "none";
         }
 
-        // When the user clicks anywhere outside of the modal, close it
         window.onclick = function(event) {
             if (event.target == infoModal) {
                 infoModal.style.display = "none";
@@ -643,24 +635,15 @@
                 privacyModal.style.display = "none";
             }
         }
-
-        // Get the privacy modal
         var privacyModal = document.getElementById("privacyModal");
-
-        // Get the link that opens the modal
         var privacyLink = document.getElementById("privacyLink");
-
-        // Get the <span> element that closes the modal
         var privacySpan = privacyModal.getElementsByClassName("close")[0];
-
-        // When the user clicks the link, open the modal
         if (privacyLink) {
             privacyLink.onclick = function() {
                 privacyModal.style.display = "block";
             }
         }
 
-        // When the user clicks on <span> (x), close the modal
         privacySpan.onclick = function() {
             privacyModal.style.display = "none";
         }
